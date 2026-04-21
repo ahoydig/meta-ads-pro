@@ -63,6 +63,22 @@ rollback_run() {
       (( deleted++ )) || true
     else
       local retry=0 delete_ok=0
+      # Lead gen forms não suportam DELETE direto — usar status=ARCHIVED via page token
+      if [[ "$type" == "leadgen_form" ]]; then
+        local page_token_leadform
+        page_token_leadform=$(graph_api GET "${PAGE_ID:-}?fields=access_token" 2>/dev/null | jq -r '.access_token // empty')
+        if [[ -n "$page_token_leadform" ]]; then
+          if curl -sS -X POST "https://graph.facebook.com/${META_API_VERSION:-v25.0}/$obj_id" \
+            -d "status=ARCHIVED" -d "access_token=$page_token_leadform" 2>/dev/null | jq -e '.success == true' >/dev/null; then
+            echo "    ✓ lead form ARCHIVED (Meta não permite DELETE direto)" >&2
+            (( deleted++ )) || true
+            continue
+          fi
+        fi
+        echo "    ⚠ lead form não pôde ser archived (sem page token?) — preservando" >&2
+        (( preserved++ )) || true
+        continue
+      fi
       while (( retry < 3 )); do
         if GRAPH_API_SKIP_RESOLVER=1 graph_api DELETE "$obj_id" 2>/dev/null; then
           (( deleted++ )) || true; delete_ok=1; break
