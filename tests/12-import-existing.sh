@@ -191,18 +191,17 @@ test_schema_and_summary() {
 # 5. Redact: token não aparece em logs de erro (simula HTTPError)
 # ─────────────────────────────────────────────────────────────────────────────
 test_redact_token_in_errors() {
-  # Usa o próprio import_existing, mas testa só a função _redact_token
-  # via python inline — mais robusto que simular HTTPError real
+  # Usa o próprio import_existing, mas testa só a função _redact_token.
+  # FU-1 compliance: single-quoted Python + argv, zero interpolação shell→Python.
   local token="SUPER_SECRET_TOKEN_ABC123"
+  local url="https://graph.facebook.com/v25.0/act_X/campaigns?fields=id&access_token=${token}"
   local out
-  out=$(python3 - <<PY 2>&1
+  out=$(python3 -c '
 import sys
-sys.path.insert(0, "$PLUGIN_ROOT/lib/_py")
+sys.path.insert(0, sys.argv[1])
 from import_existing import _redact_token
-url = "https://graph.facebook.com/v25.0/act_X/campaigns?fields=id&access_token=$token"
-print(_redact_token(url))
-PY
-)
+print(_redact_token(sys.argv[2]))
+' "$PLUGIN_ROOT/lib/_py" "$url" 2>&1)
   if echo "$out" | grep -q "$token"; then
     _fail "test_redact_token_in_errors" "token vazou: $out"
   elif echo "$out" | grep -q "access_token=%2A%2A%2A\|access_token=\*\*\*"; then
