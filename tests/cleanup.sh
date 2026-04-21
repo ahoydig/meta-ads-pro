@@ -54,8 +54,13 @@ fi
 
 # shellcheck source=/dev/null
 source "$PLUGIN_ROOT/lib/graph_api.sh"
+# graph_api.sh usa `set -euo pipefail` — restaura nossa intenção (sem -e,
+# queremos detectar falhas por branch em vez de abortar silenciosamente).
+set +e
 
 ACCOUNT="$META_AD_ACCOUNT_ID"
+LIST_LIMIT=500
+TRUNCATED_WARN=()
 
 # ── coleta ───────────────────────────────────────────────────────────────────
 echo "→ Buscando objetos TEST_* em $ACCOUNT..."
@@ -64,10 +69,15 @@ echo "→ Buscando objetos TEST_* em $ACCOUNT..."
 # Graph API não tem STARTS_WITH, então filtramos client-side depois.
 list_prefixed() {
   local endpoint="$1"  # campaigns | adsets | ads
-  local resp
-  if ! resp=$(graph_api GET "${ACCOUNT}/${endpoint}?fields=id,name,status&limit=500" 2>/dev/null); then
+  local resp total
+  if ! resp=$(graph_api GET "${ACCOUNT}/${endpoint}?fields=id,name,status&limit=${LIST_LIMIT}" 2>/dev/null); then
     echo "[]"
     return 0
+  fi
+  # aviso de truncamento: se a página veio cheia, provavelmente há mais
+  total=$(echo "$resp" | jq '[.data[]?] | length')
+  if [[ "$total" == "$LIST_LIMIT" ]]; then
+    TRUNCATED_WARN+=("$endpoint")
   fi
   # só objetos cujo name começa com TEST_ (case-sensitive)
   echo "$resp" | jq -c '[.data[]? | select(.name | startswith("TEST_"))]'
@@ -76,6 +86,11 @@ list_prefixed() {
 CAMPAIGNS_JSON=$(list_prefixed campaigns)
 ADSETS_JSON=$(list_prefixed adsets)
 ADS_JSON=$(list_prefixed ads)
+
+if (( ${#TRUNCATED_WARN[@]} > 0 )); then
+  echo "⚠ Página cheia (limit=${LIST_LIMIT}) em: ${TRUNCATED_WARN[*]}"
+  echo "  Pode haver mais TEST_* além dessa leva — rode cleanup novamente após apagar essa."
+fi
 
 n_campaigns=$(echo "$CAMPAIGNS_JSON" | jq 'length')
 n_adsets=$(echo "$ADSETS_JSON" | jq 'length')
