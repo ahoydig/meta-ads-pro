@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # install.sh — meta-ads-pro installer v1.0.0
 #
-# Instala o plugin em ~/.claude/plugins/meta-ads-pro/ e cria a árvore
+# Instala o plugin em ~/.claude/plugins/local/meta-ads-pro/ + registra em
+# ~/.claude/plugins/installed_plugins.json + habilita em ~/.claude/settings.json.
+# Cria árvore runtime
 # de dados runtime em ~/.claude/meta-ads-pro/. Detecta a skill antiga
 # (~/.claude/skills/meta-ads/) e symlinks legados, faz backup e remove.
 # Faz upgrade de versão anterior preservando dados runtime.
@@ -13,7 +15,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_DIR="${HOME}/.claude/plugins/meta-ads-pro"
+PLUGIN_DIR="${HOME}/.claude/plugins/local/meta-ads-pro"
 DATA_DIR="${HOME}/.claude/meta-ads-pro"
 SKILLS_DIR="${HOME}/.claude/skills"
 OLD_SKILL_DIR="${SKILLS_DIR}/meta-ads"
@@ -108,6 +110,43 @@ rm -rf "${PLUGIN_DIR}/.git" 2>/dev/null || true
 rm -rf "${PLUGIN_DIR}/.DS_Store" "${PLUGIN_DIR}/tests/.tmp" 2>/dev/null || true
 
 echo "✓ Código instalado"
+
+# --- 3.5. Registrar em installed_plugins.json + habilitar ----------------
+# Claude Code só carrega plugins que estejam em installed_plugins.json
+# com namespace {plugin}@local e habilitados em settings.json::enabledPlugins.
+INSTALLED_JSON="${HOME}/.claude/plugins/installed_plugins.json"
+SETTINGS_JSON="${HOME}/.claude/settings.json"
+
+if [[ -f "$INSTALLED_JSON" ]]; then
+  python3 - "$INSTALLED_JSON" "$PLUGIN_DIR" <<'PYEOF'
+import json, sys, pathlib
+from datetime import datetime, timezone
+f, install_path = sys.argv[1], sys.argv[2]
+p = pathlib.Path(f)
+d = json.loads(p.read_text())
+now = datetime.now(timezone.utc).isoformat().replace('+00:00','Z')
+d.setdefault('plugins', {})['meta-ads-pro@local'] = [{
+    'scope': 'user',
+    'installPath': install_path,
+    'version': '1.0.1',
+    'installedAt': now,
+    'lastUpdated': now
+}]
+p.write_text(json.dumps(d, indent=2))
+print('  ✓ registrado em installed_plugins.json')
+PYEOF
+fi
+
+if [[ -f "$SETTINGS_JSON" ]]; then
+  python3 - "$SETTINGS_JSON" <<'PYEOF'
+import json, sys, pathlib
+p = pathlib.Path(sys.argv[1])
+d = json.loads(p.read_text())
+d.setdefault('enabledPlugins', {})['meta-ads-pro@local'] = True
+p.write_text(json.dumps(d, indent=2))
+print('  ✓ habilitado em settings.json::enabledPlugins')
+PYEOF
+fi
 
 # --- 4. Cria estrutura runtime (preserva se já existe) -------------------
 mkdir -p \
