@@ -17,7 +17,7 @@ PLUGIN_DIR="${HOME}/.claude/plugins/meta-ads-pro"
 DATA_DIR="${HOME}/.claude/meta-ads-pro"
 SKILLS_DIR="${HOME}/.claude/skills"
 OLD_SKILL_DIR="${SKILLS_DIR}/meta-ads"
-BACKUP_DIR="${HOME}/.claude/.meta-ads-backup-$(date +%s)"
+BACKUP_DIR="${HOME}/.claude/.meta-ads-backup-$(date +%Y%m%d-%H%M%S)"
 
 # --- warnings collector (printed at the end) ------------------------------
 WARNINGS=""

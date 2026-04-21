@@ -23,17 +23,18 @@ if [[ ! -d "$PLUGIN_DIR" ]] && [[ ! -d "$DATA_DIR" ]]; then
   exit 0
 fi
 
-# Pergunta sobre dados runtime antes da confirmação final
-wipe="N"
-if [[ -d "$DATA_DIR" ]]; then
-  read -rp "Remover também dados runtime ($DATA_DIR)? [s/N] " wipe
-fi
-
+# Confirmação primeiro — se abortar, não desperdiça a pergunta sobre wipe
 read -rp "Confirma desinstalação? [s/N] " confirm
 case "$confirm" in
   s|S|sim|SIM|y|Y|yes|YES) ;;
   *) echo "Abortado."; exit 0 ;;
 esac
+
+# Só pergunta sobre wipe depois do confirm
+wipe="N"
+if [[ -d "$DATA_DIR" ]]; then
+  read -rp "Remover também dados runtime ($DATA_DIR)? [s/N] " wipe
+fi
 
 # Remove plugin
 if [[ -d "$PLUGIN_DIR" ]]; then
