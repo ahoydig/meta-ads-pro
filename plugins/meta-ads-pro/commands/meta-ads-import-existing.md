@@ -3,7 +3,7 @@ description: "Importa campanhas/adsets/ads/leadgen_forms da conta Meta pra ~/.cl
 ---
 
 Invoque a skill `meta-ads-pro/import-existing` seguindo o fluxo de 5 passos
-em `skills/import-existing/SKILL.md`.
+em `flows/import-existing/SKILL.md`.
 
 **Pré-condições:**
 

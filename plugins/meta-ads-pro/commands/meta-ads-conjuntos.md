@@ -2,7 +2,7 @@
 description: "CRUD de ad sets Meta Ads — criar (fluxo 11 passos), listar, editar, pausar/ativar, deletar. 5 destinos (SITE/LEAD_FORM/WHATSAPP/MESSENGER/CALL). Fix bug #2 (advantage_audience). Geocode ViaCEP + Nominatim, dayparting, frequency cap."
 ---
 
-Invoque a skill `meta-ads-pro/conjuntos` seguindo o fluxo documentado em `skills/conjuntos/SKILL.md`.
+Invoque a skill `meta-ads-pro/conjuntos` seguindo o fluxo documentado em `flows/conjuntos/SKILL.md`.
 
 Libs: `lib/graph_api.sh`, `lib/nomenclatura.sh`, `lib/rollback.sh`, `lib/telemetry.sh`, `lib/visual-preview.sh`, `lib/preflight.sh`.
 

@@ -2,7 +2,7 @@
 description: "Criar anúncios Meta Ads (Normal 1:1 ou Dinâmico asset_feed_spec). Upload multipart cross-platform, dev mode fallback transparente via dark post, cache de media_fbid anti-reuso, geração de copy com humanizer, preview ASCII/HTML."
 ---
 
-Invoque a skill `meta-ads-pro/anuncios` seguindo o fluxo de 12 passos em `skills/anuncios/SKILL.md`.
+Invoque a skill `meta-ads-pro/anuncios` seguindo o fluxo de 12 passos em `flows/anuncios/SKILL.md`.
 
 **Libs obrigatórias (source na ordem):**
 1. `lib/graph_api.sh`

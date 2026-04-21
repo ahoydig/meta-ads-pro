@@ -320,7 +320,7 @@ Ver `lib/error-catalog.yaml`:
 
 ## Ganchos com outras skills
 
-- **`skills/anuncios/`** — quando `destination_type=LEAD_FORM`, orquestradora aciona `/meta-ads-lead-forms` antes pra obter `form_id`, depois injeta em `object_story_spec.link_data.lead_gen_form_id`.
+- **`flows/anuncios/`** — quando `destination_type=LEAD_FORM`, orquestradora aciona `/meta-ads-lead-forms` antes pra obter `form_id`, depois injeta em `object_story_spec.link_data.lead_gen_form_id`.
 - **`lib/graph_api.sh`** — todos os calls HTTP passam por ele (retry + error-resolver + DRY_RUN).
 - **`lib/privacy-validator.sh`** — validação 3 camadas com cache 24h.
 - **`lib/rollback.sh`** — `rollback leadgen_form {form_id}` reverte criação.

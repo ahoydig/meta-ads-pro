@@ -5,6 +5,33 @@ versionamento [SemVer](https://semver.org/).
 
 ---
 
+## [v1.0.3] — 2026-04-21
+
+Hotfix release — elimina duplicatas no autocomplete do Claude Code.
+
+### Fixed
+
+- **Skills fantasma no autocomplete** — o Claude Code expõe qualquer
+  `SKILL.md` com `name:` no frontmatter como slash command. Como cada
+  skill tinha `name: meta-ads-<algo>` e cada command também, o autocomplete
+  mostrava duplicatas (`/meta-ads-setup` vinha tanto do `commands/` quanto
+  da `skills/`), além de commands fantasma (`/meta-ads-orquestradora` —
+  skill sem command correspondente) e duplicatas namespaceadas
+  (`/meta-ads-pro:meta-ads-*`). Fix: pasta `skills/` renomeada pra `flows/`
+  (não é convenção reservada). Conteúdo preservado, commands atualizados
+  pra ler `flows/<nome>/SKILL.md`. Zero skills fantasma. Autocomplete
+  volta a mostrar só os 14 slash commands reais.
+
+### Upgrade
+
+```bash
+claude plugin marketplace update meta-ads-pro
+claude plugin uninstall meta-ads-pro@meta-ads-pro
+claude plugin install meta-ads-pro@meta-ads-pro
+```
+
+---
+
 ## [v1.0.2] — 2026-04-21
 
 Distribution release — repo convertido em marketplace Claude Code + comando de

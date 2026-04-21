@@ -2,7 +2,7 @@
 description: "Instant Forms CRUD: criar/listar/editar/deletar/export leads. Valida política de privacidade bilíngue PT+EN em 3 camadas (fix bug #7 privacy Instagram), força thank you qualificado+desqualificado (fix bug #8), suporta conditional logic + qualifier/disqualifier."
 ---
 
-Invoque a skill `meta-ads-pro/lead-forms` seguindo o fluxo de 9 passos em `skills/lead-forms/SKILL.md`.
+Invoque a skill `meta-ads-pro/lead-forms` seguindo o fluxo de 9 passos em `flows/lead-forms/SKILL.md`.
 
 **Libs obrigatórias:**
 - `lib/graph_api.sh` — wrapper HTTP com retry + error-resolver + DRY_RUN

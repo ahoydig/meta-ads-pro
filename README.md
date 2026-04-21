@@ -5,7 +5,7 @@
 ██║╚██╔╝██║██╔══╝     ██║   ██╔══██║    ██╔══██║██║  ██║╚════██║    ██╔═══╝ ██╔══██╗██║   ██║
 ██║ ╚═╝ ██║███████╗   ██║   ██║  ██║    ██║  ██║██████╔╝███████║    ██║     ██║  ██║╚██████╔╝
 ╚═╝     ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝    ╚═╝  ╚═╝╚═════╝ ╚══════╝    ╚═╝     ╚═╝  ╚═╝ ╚═════╝
-                            plugin Claude Code · v1.0.2 · by @flavioahoy
+                            plugin Claude Code · v1.0.3 · by @flavioahoy
 ```
 
 **Gerenciamento completo de Meta Ads via Graph API v25.0 direto no Claude Code.**

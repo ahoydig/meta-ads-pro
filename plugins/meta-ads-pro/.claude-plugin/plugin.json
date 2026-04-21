@@ -1,6 +1,6 @@
 {
   "name": "meta-ads-pro",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Gerenciamento completo de Meta Ads via Graph API direto no Claude Code. 5 destinos (site/lead form/WhatsApp/Messenger/call), asset_feed_spec, lead forms com qualifier/disqualifier, rollback transacional, error resolver com auto-learning.",
   "author": {
     "name": "Flávio Rafael Montenegro",
