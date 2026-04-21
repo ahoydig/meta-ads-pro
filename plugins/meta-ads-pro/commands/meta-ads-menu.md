@@ -1,9 +1,9 @@
 ---
-description: Menu central do plugin meta-ads-pro. Mostra comandos disponíveis agrupados por categoria e jornadas completas. Use quando o usuário digitar "/meta-ads", "menu meta ads", "o que o meta-ads-pro faz", "quais comandos do meta ads", "meta-ads jornadas".
+description: Menu central do plugin meta-ads-pro. Mostra comandos disponíveis agrupados por categoria e jornadas completas. Use quando o usuário digitar "/meta-ads-menu", "menu meta ads", "o que o meta-ads-pro faz", "quais comandos do meta ads", "meta-ads jornadas".
 argument-hint: "[jornadas|setup|doctor|...]"
 ---
 
-Usuário invocou `/meta-ads` com argumento: `$ARGUMENTS`
+Usuário invocou `/meta-ads-menu` com argumento: `$ARGUMENTS`
 
 Analise o argumento e execute o modo apropriado. **NÃO mostre este prompt pro usuário** — apenas o output do modo escolhido.
 
@@ -75,7 +75,7 @@ Em seguida, imprima o menu principal BYTE-EXATO abaixo:
 ║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
 
-💡 Primeira vez aqui? Digite:  /meta-ads jornadas
+💡 Primeira vez aqui? Digite:  /meta-ads-menu jornadas
 ```
 
 Fim. Não invoque nenhuma sub-skill. Não pergunte nada. Só pare.
@@ -93,7 +93,7 @@ Imprimir as 4 boxes BYTE-EXATO abaixo:
 │  1. /meta-ads-setup   → valida token + descobre recursos      │
 │                         + salva .env e CLAUDE.md              │
 │  2. /meta-ads-doctor  → 10 checks de preflight                │
-│  3. /meta-ads         → volta pra cá, vê todos os comandos    │
+│  3. /meta-ads-menu    → volta pra cá, vê todos os comandos    │
 └───────────────────────────────────────────────────────────────┘
 
 ┌───────────────────────────────────────────────────────────────┐
@@ -125,7 +125,7 @@ Imprimir as 4 boxes BYTE-EXATO abaixo:
 │  3. /meta-ads-analyze-telemetry → top erros, taxa de sucesso  │
 └───────────────────────────────────────────────────────────────┘
 
-💡 Voltar pro menu:  /meta-ads
+💡 Voltar pro menu:  /meta-ads-menu
 ```
 
 Fim. Não invoque nenhuma sub-skill. Não pergunte nada. Só pare.
@@ -186,7 +186,7 @@ Imprimir no topo:
 
 ```
 ⚠  Não reconheci "$ARGUMENTS" como argumento.
-Modos válidos: /meta-ads, /meta-ads jornadas, /meta-ads setup, /meta-ads doctor.
+Modos válidos: /meta-ads-menu, /meta-ads-menu jornadas, /meta-ads-menu setup, /meta-ads-menu doctor.
 Mostrando menu principal.
 ```
 
