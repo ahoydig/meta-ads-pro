@@ -17,7 +17,9 @@ HUMANIZER_FAILURES_DIR="${HUMANIZER_FAILURES_DIR:-${HOME}/.claude/meta-ads-pro/f
 _log_failure() {
   local reason="$1" raw="$2"
   mkdir -p "$HUMANIZER_FAILURES_DIR"
-  local log="${HUMANIZER_FAILURES_DIR}/humanizer-$(date +%Y%m%d-%H%M%S)-$$.log"
+  local timestamp log
+  timestamp=$(date +%Y%m%d-%H%M%S)
+  log="${HUMANIZER_FAILURES_DIR}/humanizer-${timestamp}-$$.log"
   {
     echo "reason: $reason"
     echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
