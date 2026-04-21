@@ -20,7 +20,7 @@ que não conhece POST/DELETE.
 ## Quando usar
 
 - `/meta-ads-import-existing` — invocação direta
-- Sugerido pela orquestradora no primeiro `/meta-ads` depois do setup
+- Sugerido pela orquestradora no primeiro `/meta-ads-menu` depois do setup
   (se `~/.claude/meta-ads-pro/history/` está vazio)
 
 ## Fluxo de execução (5 passos)

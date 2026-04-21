@@ -10,7 +10,7 @@ A sub-skill mais complexa do plugin. Suporta 2 modos de criativo (Normal/Dinâmi
 ## Quando usar
 
 - `/meta-ads-anuncios` — invocação direta (apenas ads, campanha e adset já existem)
-- Invocada pela orquestradora `/meta-ads` como passo final do fluxo completo (campanha → adset → **ads**)
+- Invocada pela orquestradora como passo final do fluxo completo (campanha → adset → **ads**)
 
 ## Fluxo de execução (12 passos)
 

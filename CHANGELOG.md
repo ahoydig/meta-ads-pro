@@ -5,6 +5,49 @@ versionamento [SemVer](https://semver.org/).
 
 ---
 
+## [v1.0.2] — 2026-04-21
+
+Distribution release — repo convertido em marketplace Claude Code + comando de
+menu visual `/meta-ads-menu`. Fix do problema "plugin instalado não aparece no
+autocomplete" ao usar `~/.claude/plugins/local/` sem `.claude-plugin/marketplace.json`.
+
+### Added
+
+- **`.claude-plugin/marketplace.json`** na raiz do repo — transforma o projeto
+  em marketplace próprio. Instalação via CLI passa a ser suportada:
+  ```
+  claude plugin marketplace add https://github.com/ahoydig/meta-ads-pro
+  claude plugin install meta-ads-pro@meta-ads-pro
+  ```
+- **`/meta-ads-menu`** — porta de entrada visual (banner ASCII + menu dos 13
+  comandos agrupados + jornadas típicas). Padrão `/dna` do dna-operacional: só
+  imprime texto, não invoca sub-skills, não pergunta. Argumentos: vazio
+  (menu), `jornadas` (4 fluxos), `setup`/`doctor` (aponta pro command),
+  fallback (menu com aviso).
+
+### Changed
+
+- **Repo layout** pra padrão marketplace: código do plugin vive em
+  `plugins/meta-ads-pro/`. `install.sh` detecta e usa `SOURCE_DIR` correto
+  automaticamente (compat com clones antigos).
+- **`install.sh`** agora registra o plugin em `~/.claude/plugins/installed_plugins.json`
+  e habilita em `~/.claude/settings.json::enabledPlugins` (sem isso, plugins em
+  `local/` não carregavam commands).
+- **URLs no plugin.json, README, skills**: `flavioahoy/meta-ads-pro` →
+  `ahoydig/meta-ads-pro` (GitHub login real do autor).
+
+### Fixed
+
+- **Plugin cache stale** — Claude Code mantém cópia congelada em
+  `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`. `marketplace update`
+  não invalida esse cache. Fix: bump de versão força re-download. Documentado
+  no README (seção "Troubleshooting instalação").
+- **Autocomplete confuso** — `/meta-ads` (sem sufixo) ficava por último na
+  ordenação ASCII (hífen < ponto) e era ambíguo com os `/meta-ads-*`. Rename
+  pra `/meta-ads-menu` explicita o propósito e entra no meio da lista.
+
+---
+
 ## [v1.0.1] — 2026-04-21
 
 Hotfix release — 7 bugs descobertos no smoke live REAL v1.0.0 em produção.

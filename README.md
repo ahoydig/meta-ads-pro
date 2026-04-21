@@ -5,7 +5,7 @@
 ██║╚██╔╝██║██╔══╝     ██║   ██╔══██║    ██╔══██║██║  ██║╚════██║    ██╔═══╝ ██╔══██╗██║   ██║
 ██║ ╚═╝ ██║███████╗   ██║   ██║  ██║    ██║  ██║██████╔╝███████║    ██║     ██║  ██║╚██████╔╝
 ╚═╝     ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝    ╚═╝  ╚═╝╚═════╝ ╚══════╝    ╚═╝     ╚═╝  ╚═╝ ╚═════╝
-                            plugin Claude Code · v1.0.0 · by @flavioahoy
+                            plugin Claude Code · v1.0.2 · by @flavioahoy
 ```
 
 **Gerenciamento completo de Meta Ads via Graph API v25.0 direto no Claude Code.**
@@ -17,8 +17,19 @@ resolver com auto-learning e preview ASCII + HTML. Tudo portável bash 3.2+ (mac
 
 ## Quickstart
 
+### Opção 1 — Via marketplace Claude Code (recomendado)
+
 ```bash
-git clone https://github.com/flavioahoy/meta-ads-pro.git
+claude plugin marketplace add https://github.com/ahoydig/meta-ads-pro
+claude plugin install meta-ads-pro@meta-ads-pro
+```
+
+Depois **sai do Claude Code e abre sessão nova** (os commands só aparecem no startup).
+
+### Opção 2 — Via clone + install.sh
+
+```bash
+git clone https://github.com/ahoydig/meta-ads-pro.git
 cd meta-ads-pro
 ./install.sh
 ```
@@ -26,7 +37,8 @@ cd meta-ads-pro
 O installer:
 
 - Desinstala qualquer versão antiga da skill `meta-ads` (com backup timestamped)
-- Copia o plugin pra `~/.claude/plugins/meta-ads-pro/`
+- Copia o plugin pra `~/.claude/plugins/local/meta-ads-pro/`
+- Registra em `installed_plugins.json` + habilita em `settings.json::enabledPlugins`
 - Cria a árvore runtime em `~/.claude/meta-ads-pro/` (manifests, learnings, cache, reports)
 - Detecta upgrade vs install novo e **preserva dados runtime**
 - Checa dependências: `jq`, `python3 3.8+`, `curl`, `yq` (opcional), `sips` (macOS) ou
@@ -34,12 +46,12 @@ O installer:
 - Avisa se as skills externas recomendadas (`humanizer`, `nomenclatura-utm`) não
   estiverem disponíveis
 
-Depois de instalar:
+Depois de instalar (qualquer método):
 
 ```
+/meta-ads-menu       # porta de entrada — banner + menu dos 13 comandos
 /meta-ads-setup      # configuração inicial (11 passos)
 /meta-ads-doctor     # diagnóstico do ambiente
-/meta-ads            # orquestradora — roteia intenção
 ```
 
 ---
@@ -50,7 +62,7 @@ Depois de instalar:
 
 | Command | O que faz |
 |---------|-----------|
-| `/meta-ads` | Orquestradora — renderiza banner, roda doctor, roteia pela intenção |
+| `/meta-ads-menu` | Menu central — banner + lista dos comandos agrupados + jornadas típicas |
 | `/meta-ads-setup` | Setup inicial: valida token, descobre recursos, grava `.env` + `CLAUDE.md` |
 | `/meta-ads-doctor` | 10 checks de ambiente + 6 flags (`--fix`, `--silent`, `--report`, `--release-lock`, `--review-learnings`) |
 | `/meta-ads-campanha` | CRUD de campanhas (criar em 8 passos, list/edit/pause/activate/delete) |

@@ -129,7 +129,7 @@ Se `~/.claude/meta-ads-pro/learnings/unknown_errors.jsonl` tem entries novos des
 ```
 > "Ei, tenho 3 learnings novos de erros desde a última revisão. Quer:
 >   [1] Abrir pra revisar agora
->   [2] Enviar como issue no github.com/flavioahoy/meta-ads-pro
+>   [2] Enviar como issue no github.com/ahoydig/meta-ads-pro
 >   [3] Deixar pra depois"
 ```
 
