@@ -64,8 +64,12 @@ resolve_error() {
 
   case "$fn" in
     add_field|add_nested)
-      # aplicação do fix exige re-POST modificando body — delega ao caller via flag
+      # aplicação do fix exige re-POST modificando body — exporta FIX pro caller
+      # aplicar via apply_fix_to_body() e retentar uma vez.
       echo "FIX:$fix" >&2
+      # shellcheck disable=SC2034  # RESOLVER_FIX é lida pelo graph_api.sh (caller)
+      RESOLVER_FIX="$fix"
+      export RESOLVER_FIX
       return 2  # código especial: caller deve aplicar e retentar
       ;;
     sleep_and_retry)
@@ -79,12 +83,71 @@ resolve_error() {
       echo "USER_ACTION:$fn" >&2
       return 1
       ;;
-    read_buc_header_and_wait|switch_to_dark_post_flow|offer_sips_resize|add_placement_sibling|regenerate_media_fbid)
-      # implementação em CP2
-      echo "TODO_CP2:$fn" >&2
+    switch_to_dark_post_flow)
+      # Fix bug #3: Graph API rejeita object_story_spec quando app em dev mode.
+      # Re-escreve body com object_story_id apontando pra dark post recém-criado.
+      # Caller re-executa POST com o novo body via RESOLVER_NEW_BODY.
+      local new_body
+      new_body=$(switch_to_dark_post_flow "${_body:-}") || {
+        echo "switch_to_dark_post_flow: falhou" >&2
+        return 1
+      }
+      export RESOLVER_NEW_BODY="$new_body"
+      echo "FIX:switch_to_dark_post_flow" >&2
+      return 2
+      ;;
+    read_buc_header_and_wait|offer_sips_resize|add_placement_sibling|regenerate_media_fbid)
+      # implementação em CPs posteriores
+      echo "TODO_CP_FUTURE:$fn" >&2
       return 1
       ;;
     *)
+      return 1
+      ;;
+  esac
+}
+
+# Aplica fix ao body JSON e ecoa o novo body.
+# fix formato: "add_field:<key>:<value>"  ou  "add_nested:<dot.path>:<value>"
+# value é interpretado como JSON se bool/numérico/null, senão como string.
+# Usage: new_body=$(apply_fix_to_body "$body" "$fix")
+apply_fix_to_body() {
+  local body="$1" fix="$2"
+  [[ -z "$fix" ]] && { echo "$body"; return 1; }
+  [[ -z "$body" ]] && body='{}'
+
+  local fn rest key value
+  fn="${fix%%:*}"
+  rest="${fix#*:}"
+  key="${rest%%:*}"
+  value="${rest#*:}"
+
+  local is_json=0
+  if [[ "$value" == "true" || "$value" == "false" || "$value" == "null" ]] \
+     || [[ "$value" =~ ^-?[0-9]+$ ]] \
+     || [[ "$value" =~ ^-?[0-9]+\.[0-9]+$ ]]; then
+    is_json=1
+  fi
+
+  case "$fn" in
+    add_field)
+      if (( is_json )); then
+        echo "$body" | jq -c --arg k "$key" --argjson v "$value" '. + {($k): $v}'
+      else
+        echo "$body" | jq -c --arg k "$key" --arg v "$value" '. + {($k): $v}'
+      fi
+      ;;
+    add_nested)
+      local path_json
+      path_json=$(printf '%s' "$key" | jq -Rc 'split(".")')
+      if (( is_json )); then
+        echo "$body" | jq -c --argjson p "$path_json" --argjson v "$value" 'setpath($p; $v)'
+      else
+        echo "$body" | jq -c --argjson p "$path_json" --arg v "$value" 'setpath($p; $v)'
+      fi
+      ;;
+    *)
+      echo "$body"
       return 1
       ;;
   esac
