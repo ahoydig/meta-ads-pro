@@ -6,7 +6,9 @@
 set -euo pipefail
 
 # shellcheck source=/dev/null
-source "$(dirname "${BASH_SOURCE[0]}")/graph_api.sh"
+# Fallback ${BASH_SOURCE[0]:-$0} cobre shell interativo bash 3.2 onde BASH_SOURCE[0]
+# pode estar unset sob `set -u`. Fix pro bug descoberto no smoke DRY_RUN v1.0.0.
+source "$(dirname "${BASH_SOURCE[0]:-$0}")/graph_api.sh"
 
 # ─── check 1: token válido ─────────────────────────────────────────────────
 check_token_valid() {
@@ -134,10 +136,10 @@ check_ad_account_active() {
   local account="${AD_ACCOUNT_ID:?}"
   local r
   r=$(graph_api GET "$account?fields=account_status,currency,timezone_name")
-  local status
-  status=$(echo "$r" | jq -r .account_status)
-  if [[ "$status" != "1" ]]; then
-    echo "✗ Ad account não ativo (status=$status)"
+  local acct_status
+  acct_status=$(echo "$r" | jq -r .account_status)
+  if [[ "$acct_status" != "1" ]]; then
+    echo "✗ Ad account não ativo (status=$acct_status)"
     return 2
   fi
   echo "✓ Ad account ACTIVE ($(echo "$r" | jq -r .currency), $(echo "$r" | jq -r .timezone_name))"
