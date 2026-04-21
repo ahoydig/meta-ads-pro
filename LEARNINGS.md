@@ -23,7 +23,7 @@ campanha de formulário no Instagram). Cada um virou um `test_bug_NN_*` em
 | 6 | Nomenclatura hardcoded (`[FORMULARIO][X][AUTO]` não funcionava) | Placeholder system inexistente | `lib/nomenclatura.sh` + templates customizáveis em `CLAUDE.md` com regex `[a-zA-Z-]*` cobrindo hífen. Cobertura: `tests/02-components.sh` (asserts em `nomenclatura_apply` + placeholder strip) |
 | 7 | Privacy URL do Instagram aceita no form | Validação só checava HTTP 200 | `lib/privacy-validator.sh` — 3 camadas (HEAD, fetch com UA, keyword match PT+EN), rejeita domínios `instagram.com`. Test: `test_bug_07_privacy_policy_instagram` |
 | 8 | Lead form sem `disqualified_thank_you_page` | Cliente-side não validava | Skill `lead-forms/` bloqueia POST sem as duas thank you pages. Test: `test_bug_08_lead_form_thankyou_duo` |
-| 9 | Sem rollback quando falhava mid-run | Não existia manifest de run | `lib/rollback.sh` + `lib/_py/manifest.py` — topológico, idempotente, retry em 613/80004. Cobertura: `tests/02-components.sh` (ordem topológica + idempotência 404) + `tests/14-integracao.sh` (rollback mid-run) |
+| 9 | Sem rollback quando falhava mid-run | Não existia manifest de run | `lib/rollback.sh` + `lib/_py/manifest.py` — topológico, idempotente, retry em 613/80004. Cobertura: `tests/02-components.sh` (ordem topológica + idempotência 404) + `tests/15-e2e.sh` (rollback end-to-end com manifest move) |
 | 10 | Sem preflight antes de POST | Usuário descobria erros só no 4º passo | `/meta-ads-doctor --silent` roda como preflight interno. 10 checks. Test: `test_bug_10_preflight_doctor` |
 
 ### Arquitetura final
@@ -333,6 +333,6 @@ e5d94ce feat(lib): privacy-validator 3 camadas bilíngue + cache 24h
 - `install.sh` com auto-desinstall da versão antiga + backup + cross-platform deps check
 - `uninstall.sh` com wipe opcional de dados runtime
 - `README.md` completo (quickstart, 14 commands, 5 exemplos de destino, troubleshooting, contributing, license)
-- `CHANGELOG.md` com entry v1.0.0 detalhado (9 sub-skills, 10 bugs fixados com subcode, upgrade path)
+- `CHANGELOG.md` com entry v1.0.0 detalhado (11 skills, 10 bugs fixados com subcode, upgrade path)
 - `LEARNINGS.md` final (este arquivo) — resumo dos 4 CPs, arquitetura consolidada, commits
 - Tag `v1.0.0` + GitHub Release (via `gh release create`)
