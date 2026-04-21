@@ -57,7 +57,21 @@ rollback_run() {
     source "$(dirname "${BASH_SOURCE[0]}")/graph_api.sh"
   fi
 
+  # Guard contra manifest vazio (nada criado ainda)
+  if [[ -z "$list" ]]; then
+    echo "rollback: manifest vazio, nada a fazer" >&2
+    # Move manifest pra history (run que abortou antes de criar qualquer objeto)
+    local file history_dir
+    file=$(manifest_path "$run_id")
+    history_dir="${HOME}/.claude/meta-ads-pro/history"
+    mkdir -p "$history_dir"
+    [[ -f "$file" ]] && mv "$file" "$history_dir/"
+    return 0
+  fi
+
   while IFS=$'\t' read -r priority type obj_id; do
+    # Skip linhas vazias
+    [[ -z "$priority" && -z "$type" && -z "$obj_id" ]] && continue
     echo "🗑  deletando $type/$obj_id (priority $priority)" >&2
     if [[ "${ROLLBACK_MOCK:-0}" == "1" ]]; then
       (( deleted++ )) || true

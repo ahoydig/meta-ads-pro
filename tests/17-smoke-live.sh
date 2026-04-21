@@ -166,9 +166,10 @@ echo "✓ manifest: $(manifest_path "$run_id")"
 
 # ─── 2. lead form mínimo ──────────────────────────────────────────────────────
 echo ""
-echo "→ criando lead form (_SMOKE_form)..."
-form_payload=$(jq -nc --arg url "$PRIVACY_URL" '{
-  name: "_SMOKE_form",
+form_name="_SMOKE_form_$(date +%Y%m%d_%H%M%S)"
+echo "→ criando lead form ($form_name)..."
+form_payload=$(jq -nc --arg url "$PRIVACY_URL" --arg fname "$form_name" '{
+  name: $fname,
   questions: [
     {type:"FULL_NAME"},
     {type:"EMAIL"},
