@@ -276,6 +276,69 @@ test_feature_flags_default() {
   fi
 }
 
+# ─── CP2a.fix: apply_fix_to_body (apply-retry glue pro resolver) ──────────
+test_apply_fix_to_body_add_field_bool() {
+  # shellcheck source=../lib/error-resolver.sh
+  source "$(dirname "$0")/../lib/error-resolver.sh"
+  local out
+  out=$(apply_fix_to_body '{"name":"x"}' 'add_field:is_adset_budget_sharing_enabled:false')
+  if echo "$out" | jq -e '.is_adset_budget_sharing_enabled == false and .name == "x"' >/dev/null; then
+    _pass "test_apply_fix_to_body_add_field_bool"
+  else
+    _fail "test_apply_fix_to_body_add_field_bool" "got '$out'"; exit 1
+  fi
+}
+
+test_apply_fix_to_body_add_field_int() {
+  # shellcheck source=../lib/error-resolver.sh
+  source "$(dirname "$0")/../lib/error-resolver.sh"
+  local out
+  out=$(apply_fix_to_body '{"a":1}' 'add_field:count:42')
+  if echo "$out" | jq -e '.count == 42 and .a == 1' >/dev/null; then
+    _pass "test_apply_fix_to_body_add_field_int"
+  else
+    _fail "test_apply_fix_to_body_add_field_int" "got '$out'"; exit 1
+  fi
+}
+
+test_apply_fix_to_body_add_nested_int() {
+  # shellcheck source=../lib/error-resolver.sh
+  source "$(dirname "$0")/../lib/error-resolver.sh"
+  local out
+  out=$(apply_fix_to_body '{"targeting":{"geo_locations":{"countries":["BR"]}}}' \
+    'add_nested:targeting.targeting_automation.advantage_audience:0')
+  if echo "$out" | jq -e '.targeting.targeting_automation.advantage_audience == 0 and .targeting.geo_locations.countries[0] == "BR"' >/dev/null; then
+    _pass "test_apply_fix_to_body_add_nested_int"
+  else
+    _fail "test_apply_fix_to_body_add_nested_int" "got '$out'"; exit 1
+  fi
+}
+
+test_apply_fix_to_body_add_field_string() {
+  # shellcheck source=../lib/error-resolver.sh
+  source "$(dirname "$0")/../lib/error-resolver.sh"
+  local out
+  out=$(apply_fix_to_body '{}' 'add_field:status:PAUSED')
+  if echo "$out" | jq -e '.status == "PAUSED"' >/dev/null; then
+    _pass "test_apply_fix_to_body_add_field_string"
+  else
+    _fail "test_apply_fix_to_body_add_field_string" "got '$out'"; exit 1
+  fi
+}
+
+test_resolve_error_exports_resolver_fix() {
+  # shellcheck source=../lib/error-resolver.sh
+  source "$(dirname "$0")/../lib/error-resolver.sh"
+  unset RESOLVER_FIX || true
+  local rc=0
+  resolve_error 100 4834011 '{"error":{"code":100}}' POST "act_X/campaigns" '{}' >/dev/null 2>&1 || rc=$?
+  if (( rc == 2 )) && [[ "${RESOLVER_FIX:-}" == "add_field:is_adset_budget_sharing_enabled:false" ]]; then
+    _pass "test_resolve_error_exports_resolver_fix"
+  else
+    _fail "test_resolve_error_exports_resolver_fix" "rc=$rc RESOLVER_FIX='${RESOLVER_FIX:-}'"; exit 1
+  fi
+}
+
 # ─── Task 2c.1.1: media_hash ───────────────────────────────────────────────
 test_media_hash_length() {
   local tmp h
@@ -464,6 +527,11 @@ test_nomenclatura_detect_underscore
 test_telemetry_log_writes_jsonl
 test_telemetry_opt_out
 test_feature_flags_default
+test_apply_fix_to_body_add_field_bool
+test_apply_fix_to_body_add_field_int
+test_apply_fix_to_body_add_nested_int
+test_apply_fix_to_body_add_field_string
+test_resolve_error_exports_resolver_fix
 test_media_hash_length
 test_media_hash_stable
 test_media_hash_missing_file
