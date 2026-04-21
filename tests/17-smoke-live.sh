@@ -181,11 +181,17 @@ form_payload=$(jq -nc --arg url "$PRIVACY_URL" '{
   },
   thank_you_page: {
     title: "Obrigado!",
-    body: "Em breve entramos em contato."
+    body: "Em breve entramos em contato.",
+    button_type: "VIEW_WEBSITE",
+    button_text: "Saiba mais",
+    website_url: $url
   },
   disqualified_thank_you_page: {
     title: "Obrigado pelo interesse",
-    body: "Siga @flavioahoy pra conteúdo sobre Claude Code."
+    body: "Siga @flavioahoy pra conteúdo sobre Claude Code.",
+    button_type: "VIEW_WEBSITE",
+    button_text: "Ir pro Instagram",
+    website_url: "https://instagram.com/flavioahoy"
   },
   follow_up_action_url: $url
 }')
