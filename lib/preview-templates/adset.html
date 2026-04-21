@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Preview Ad Set — {{name}}</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:720px;margin:2em auto;padding:1em;color:#1c1e21;background:#f0f2f5}
+.card{background:#fff;border-radius:8px;padding:1.5em;margin-bottom:1em;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+h1{font-size:1.4em;margin:0 0 .5em;color:#1877F2}
+.stat{display:flex;justify-content:space-between;padding:.5em 0;border-bottom:1px solid #e4e6eb}
+.stat:last-child{border:none}
+.stat b{color:#65676b;font-weight:500}
+#map{height:300px;border-radius:8px;margin-top:1em}
+.badge{display:inline-block;padding:.25em .75em;border-radius:12px;background:#e7f3ff;color:#1877F2;font-size:.85em;margin-right:.5em}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>🎯 {{name}}</h1>
+<div class="stat"><b>Destino</b><span>{{destination}}</span></div>
+<div class="stat"><b>Objetivo otimização</b><span>{{optimization_goal}}</span></div>
+<div class="stat"><b>Budget diário</b><span>R$ {{daily_budget_brl}}</span></div>
+<div class="stat"><b>Bid strategy</b><span>{{bid_strategy}}</span></div>
+<div class="stat"><b>Targeting</b><span>{{age_min}}–{{age_max}} anos · {{gender}}</span></div>
+<div class="stat"><b>Alcance estimado</b><span>{{reach_lower}}–{{reach_upper}}</span></div>
+<div class="stat"><b>Posicionamentos</b><span>{{placements}}</span></div>
+<div>{{#interests}}<span class="badge">{{name}}</span>{{/interests}}</div>
+</div>
+<div class="card">
+<h1>📍 Geolocalização</h1>
+<div class="stat"><b>Raio</b><span>{{radius_km}}km do CEP {{cep}}</span></div>
+<div id="map"></div>
+</div>
+<script>
+const lat={{geo_lat}}, lng={{geo_lng}}, radius={{radius_meters}};
+if(lat && lng){
+  const map=L.map('map').setView([lat,lng], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+  L.marker([lat,lng]).addTo(map);
+  L.circle([lat,lng],{radius,color:'#1877F2',fillColor:'#1877F2',fillOpacity:.15}).addTo(map);
+}
+</script>
+</body>
+</html>

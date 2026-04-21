@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Preview Stories — {{ad_name}}</title>
+<style>
+body{margin:0;padding:2em;background:#000;display:flex;justify-content:center;font-family:-apple-system,Segoe UI,sans-serif}
+.stories{width:375px;height:667px;position:relative;border-radius:24px;overflow:hidden;background:url({{image_url}}) center/cover #222}
+.bar{position:absolute;top:10px;left:10px;right:10px;display:flex;gap:4px;z-index:10}
+.bar div{flex:1;height:3px;background:rgba(255,255,255,.3);border-radius:2px}
+.bar div:first-child{background:#fff}
+.header{position:absolute;top:25px;left:10px;right:10px;display:flex;align-items:center;gap:8px;color:#fff;z-index:10}
+.avatar{width:32px;height:32px;border-radius:50%;background:#1877F2;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.85em}
+.page-name{font-weight:600;font-size:.9em}
+.sponsored{font-size:.75em;opacity:.8}
+.content{position:absolute;bottom:80px;left:16px;right:16px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.headline{font-size:1.3em;font-weight:700;margin-bottom:8px}
+.primary{font-size:.95em;line-height:1.4}
+.cta{position:absolute;bottom:20px;left:16px;right:16px;background:rgba(255,255,255,.95);color:#050505;padding:12px;border-radius:8px;font-weight:600;text-align:center;font-size:.95em}
+</style>
+</head>
+<body>
+<div class="stories">
+<div class="bar"><div></div><div></div><div></div></div>
+<div class="header">
+<div class="avatar">{{page_initial}}</div>
+<div><div class="page-name">{{page_name}}</div><div class="sponsored">Patrocinado</div></div>
+</div>
+<div class="content">
+<div class="headline">{{headline}}</div>
+<div class="primary">{{primary_text}}</div>
+</div>
+<div class="cta">{{cta_label}} ›</div>
+</div>
+</body>
+</html>
