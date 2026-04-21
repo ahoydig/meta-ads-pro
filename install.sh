@@ -15,6 +15,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Marketplace layout: código do plugin vive em plugins/meta-ads-pro/ no repo.
+# Fallback pro layout antigo (plugin na raiz) pra compat com clones históricos.
+if [[ -d "${SCRIPT_DIR}/plugins/meta-ads-pro" ]]; then
+  SOURCE_DIR="${SCRIPT_DIR}/plugins/meta-ads-pro"
+else
+  SOURCE_DIR="${SCRIPT_DIR}"
+fi
 PLUGIN_DIR="${HOME}/.claude/plugins/local/meta-ads-pro"
 DATA_DIR="${HOME}/.claude/meta-ads-pro"
 SKILLS_DIR="${HOME}/.claude/skills"
@@ -37,8 +44,8 @@ BANNER
 echo ""
 
 # --- sanity: plugin manifest existe --------------------------------------
-if [[ ! -f "${SCRIPT_DIR}/.claude-plugin/plugin.json" ]]; then
-  echo "✗ ERRO: .claude-plugin/plugin.json não encontrado em ${SCRIPT_DIR}"
+if [[ ! -f "${SOURCE_DIR}/.claude-plugin/plugin.json" ]]; then
+  echo "✗ ERRO: .claude-plugin/plugin.json não encontrado em ${SOURCE_DIR}"
   echo "  Rode ./install.sh a partir da raiz do repositório clonado."
   exit 1
 fi
@@ -92,7 +99,7 @@ if [[ -d "$PLUGIN_DIR" ]]; then
   fi
   new_ver="unknown"
   if command -v jq >/dev/null 2>&1; then
-    new_ver="$(jq -r '.version // "unknown"' "${SCRIPT_DIR}/.claude-plugin/plugin.json" 2>/dev/null || echo "unknown")"
+    new_ver="$(jq -r '.version // "unknown"' "${SOURCE_DIR}/.claude-plugin/plugin.json" 2>/dev/null || echo "unknown")"
   fi
   echo "⚙ Upgrade detectado: v${old_ver} → v${new_ver}"
   echo "  (dados runtime em $DATA_DIR serão preservados)"
@@ -102,7 +109,7 @@ fi
 # --- 3. Copia código para ~/.claude/plugins/meta-ads-pro/ ----------------
 echo "⚙ Instalando plugin em $PLUGIN_DIR ..."
 mkdir -p "$(dirname "$PLUGIN_DIR")"
-cp -R "$SCRIPT_DIR" "$PLUGIN_DIR"
+cp -R "$SOURCE_DIR" "$PLUGIN_DIR"
 
 # Remove .git (o plugin instalado não precisa do histórico git)
 rm -rf "${PLUGIN_DIR}/.git" 2>/dev/null || true
