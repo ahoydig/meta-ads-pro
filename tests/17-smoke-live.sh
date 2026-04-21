@@ -33,6 +33,8 @@
 #
 # Bash 3.2 portable. shellcheck clean (disables documentados).
 
+# -e off propositalmente — cada POST crítico tem guard explícito (|| { exit 1 }).
+# -u/-o pipefail mantidos pra detectar var não setada + falha em pipes.
 set -uo pipefail
 
 PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -363,6 +365,7 @@ case "$effective_status_final" in
 esac
 
 # assertion 2: impressions > 0 (WARN, não falha — smoke não cria ad, então 0 é esperado)
+# NOTA: se no futuro Task 4.1.1b criar ad+creative real, promover este WARN pra FAIL.
 if [[ "$impressions_final" == "0" || -z "$impressions_final" ]]; then
   echo "⚠ impressions=0 (esperado pra smoke sem ad — plumbing ok)"
 else
