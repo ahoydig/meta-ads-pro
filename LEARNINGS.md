@@ -23,6 +23,13 @@ Esse arquivo documenta decisões, bugs, fixes e trade-offs que emergiram durante
 - macOS usa BSD sed, trata `\{` como literal braces.
 - Fix: `sed 's/_[{][a-zA-Z]*[}]//g'` — char classes `[{]`/`[}]` funcionam em BRE+ERE de ambos dialects. Portável.
 
+**4. `mapfile` em `tests/01-lint.sh` (bash 4+, quebra em macOS bash 3.2)**
+- `mapfile -t sh_files < <(find ...)` é bash 4+; macOS default é 3.2.57.
+- shellcheck não flagga versioning, passou no review do bash-dev. Pego no cross-cutting review.
+- Fix: substituir por `while IFS= read -r f; do arr+=("$f"); done < <(find ...)` — portable.
+- Cascade: `run_all.sh` tem `|| exit 1` na camada 1 → quebra a camada 2 também.
+- Commit fix: `f76e816`.
+
 **4. Docstring inconsistente em detect_pattern.py (plano)**
 - Docstring do plano dizia uma coisa, código fazia outra.
 - python-dev detectou durante implementação e corrigiu a docstring pra bater com o comportamento.
@@ -56,6 +63,26 @@ Esse arquivo documenta decisões, bugs, fixes e trade-offs que emergiram durante
 
 ---
 
+### Minor notes do cross-cutting review (CP2)
+
+**M1 — `check_app_mode` branch inconclusive sem fail-safe**
+- Quando a resposta da Graph API é ambígua (nem erro 1885183 nem creative_id), função retorna 1 mas deixa `FALLBACK_DARK_POST` unset.
+- Edge case raro, mas pode bugar fluxos de CP2 que checam a flag.
+- **Fix sugerido:** defaulting pra `FALLBACK_DARK_POST=true` (mais seguro — dark post sempre funciona).
+- Scope: quick patch no início do CP2.
+
+**M2 — curl direto em `check_token_expiration`/`check_scopes`**
+- Bypassa o wrapper `lib/graph_api.sh` (perde retry em 5xx).
+- Justificável: `debug_token` endpoint usa schema de auth diferente (`input_token=X&access_token=Y`).
+- Aceitável. Se quiser normalizar, adicionar suporte a "two-token" no `graph_api`.
+
+**M3 — `jq ... || echo 0` silencia erros de syntax**
+- `check_learnings` usa fallback gentil pra contar entries em `unknown_errors.jsonl`.
+- Se JSONL tiver syntax error, silencia com 0.
+- Aceitável pra CP1; se CP2 precisar diagnóstico preciso, trocar pra validação explícita.
+
+---
+
 ### Decisões arquiteturais validadas
 
 - **lib/_py/ pra scripts Python standalone** — pagou dividendos: todos os scripts Python passaram review sem bug de escape/heredoc hell (zero issues de injection), diferente do pattern rejeitado no review round 1.
@@ -67,10 +94,22 @@ Esse arquivo documenta decisões, bugs, fixes e trade-offs que emergiram durante
 
 - 5 agents spawnados (bash-dev, python-dev, test-dev, docs-dev sonnet/haiku + reviewer opus)
 - 21 tasks em ~40 minutos wall-time
-- 5 commits no git
+- 7 commits no git
 - 16 testes automatizados passando
-- 1 bug real do plano fixado (str(False)), 3 bugs de compatibilidade macOS corrigidos (BSD sed, bash 3.2, `declare -A`)
+- 1 bug real do plano fixado (str(False)), 4 bugs de compatibilidade macOS corrigidos (BSD sed, bash 3.2 `declare -A`, `mapfile`, inconsistências)
 - Issues de coordenação: bash-dev marcou tasks como completed sem commitar inicialmente → corrigido via intervenção do team-lead
+
+### Commits finais CP1
+
+```
+f76e816 fix(tests): 01-lint.sh usa while read em vez de mapfile (bash 3.2 compat)
+5b27942 docs: LEARNINGS.md com bugs/fixes + 4 follow-ups do review CP1
+bea7afc feat(lib): preflight.sh com 10 checks do doctor
+78edd0d chore: scaffold inicial + todos os lib helpers CP1
+72721c3 chore: scaffold inicial meta-ads-pro v1.0.0-alpha.1
+52ccf5d feat(_py): 4 scripts standalone (telemetry_log, manifest, log_unknown_error, detect_pattern)
+22b0700 feat(docs): skills setup + doctor com 11 passos + 10 checks
+```
 
 ---
 
