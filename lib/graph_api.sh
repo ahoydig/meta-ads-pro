@@ -23,6 +23,17 @@ graph_api() {
   # Guard: body vazio vira objeto vazio pra jq não quebrar
   [[ -z "$body" ]] && body='{}'
 
+  # DRY RUN interception — intercepta POST/DELETE, não GET.
+  # Usuário seta META_ADS_DRY_RUN=1 → zero chamadas reais à Meta, manifest JSONL só.
+  if [[ "${META_ADS_DRY_RUN:-0}" == "1" ]] && [[ "$method" != "GET" ]]; then
+    local ghost_id
+    ghost_id="DRY_RUN_$(date +%s)_$$_$RANDOM"
+    python3 "$(dirname "${BASH_SOURCE[0]}")/_py/dry_run_manifest.py" \
+      --method "$method" --path "$path" --body "$body" --ghost-id "$ghost_id" 2>/dev/null || true
+    echo "{\"id\":\"$ghost_id\",\"dry_run\":true}"
+    return 0
+  fi
+
   while (( attempt <= MAX_RETRIES )); do
     if [[ "$method" == "GET" ]]; then
       # separador correto entre query existente e access_token

@@ -484,6 +484,31 @@ test_dry_run_manifest_append() {
   fi
 }
 
+test_graph_api_dry_run_intercepts_post() {
+  local tmp response manifest
+  tmp=$(mktemp -d)
+  # shellcheck source=../lib/graph_api.sh disable=SC1091
+  META_ADS_DRY_RUN=1 DRY_RUN_DIR="$tmp" META_ACCESS_TOKEN=fake \
+    source "$(dirname "$0")/../lib/graph_api.sh"
+  response=$(META_ADS_DRY_RUN=1 DRY_RUN_DIR="$tmp" META_ACCESS_TOKEN=fake \
+    graph_api POST "fake/path" '{"name":"test"}' 2>/dev/null)
+  if ! echo "$response" | jq -e '.dry_run == true' >/dev/null; then
+    rm -rf "$tmp"
+    _fail "test_graph_api_dry_run_intercepts_post" "dry_run flag missing: $response"; exit 1
+  fi
+  if ! echo "$response" | jq -e '.id | startswith("DRY_RUN_")' >/dev/null; then
+    rm -rf "$tmp"
+    _fail "test_graph_api_dry_run_intercepts_post" "ghost id invalid: $response"; exit 1
+  fi
+  manifest=$(find "$tmp" -name "*.jsonl" -type f | head -1)
+  if [[ -z "$manifest" ]]; then
+    rm -rf "$tmp"
+    _fail "test_graph_api_dry_run_intercepts_post" "manifest não criado"; exit 1
+  fi
+  rm -rf "$tmp"
+  _pass "test_graph_api_dry_run_intercepts_post"
+}
+
 test_dry_run_manifest_body_string() {
   local tmp_dir entry file
   tmp_dir=$(mktemp -d)
@@ -569,6 +594,7 @@ test_claude_invoke_api_missing_key
 test_claude_invoke_api_usage
 test_claude_invoke_api_invalid_max_tokens
 test_dry_run_manifest_append
+test_graph_api_dry_run_intercepts_post
 test_dry_run_manifest_body_string
 test_import_existing_usage
 test_import_existing_smoke
