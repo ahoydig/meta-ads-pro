@@ -13,8 +13,9 @@ testes de regressão permanente.
 
 ### Added
 
-- **9 sub-skills** (`orquestradora`, `setup`, `doctor`, `campanha`, `conjuntos`,
-  `anuncios`, `lead-forms`, `publicos`, `regras`, `insights`, `import-existing`)
+- **11 skills** (1 orquestradora + 10 sub-skills: `setup`, `doctor`, `campanha`,
+  `conjuntos`, `anuncios`, `lead-forms`, `publicos`, `regras`, `insights`,
+  `import-existing`)
 - **5 destinos de campanha**: Site externo (`WEBSITE`), Lead Form (`ON_AD`),
   WhatsApp (`WHATSAPP`), Messenger (`MESSENGER`), Chamada (`PHONE_CALL`)
 - **Tipos de criativo Normal e Dinâmico** (`asset_feed_spec` com combinatória
@@ -48,9 +49,10 @@ testes de regressão permanente.
   da nova versão
 - **`/meta-ads-analyze-telemetry`** — relatório local de top erros,
   sub-skills mais usadas, taxa de sucesso, duração média
-- **146+ testes automatizados** em 14 arquivos (lint, components, doctor,
-  campanha, conjuntos, anúncios, lead-forms, públicos, regras, insights,
-  import, dry-run, integração, e2e, stress) + suite de regression dos 10 bugs
+- **146+ testes automatizados** em 17 arquivos (regression, lint, components,
+  doctor, campanha, conjuntos, anúncios, lead-forms, públicos, regras,
+  insights, import, dry-run, integração, e2e, stress, smoke-live) + suite
+  de regression dos 10 bugs
 - **Cross-platform**: bash 3.2+ portável (macOS default), sips no Darwin,
   ImageMagick no Linux/WSL, BSD/GNU sed compat
 

@@ -11,7 +11,7 @@
 **Gerenciamento completo de Meta Ads via Graph API v25.0 direto no Claude Code.**
 Cinco destinos (Site, Lead Form, WhatsApp, Messenger, Call), criativos Normal e Dinâmico
 (`asset_feed_spec`), lead forms com qualifier/disqualifier, rollback transacional, error
-resolver com auto-learning e preview ASCII + HTML. Tudo portável bash 3.2+ (macOS / Linux / WSL).
+resolver com auto-learning e preview ASCII + HTML. Tudo portável bash 3.2+ (macOS / Linux).
 
 ---
 
@@ -46,7 +46,7 @@ Depois de instalar:
 
 ## Commands
 
-13 slash commands cobrem todo o ciclo:
+14 slash commands cobrem todo o ciclo:
 
 | Command | O que faz |
 |---------|-----------|

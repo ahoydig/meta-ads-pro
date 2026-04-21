@@ -20,10 +20,10 @@ campanha de formulário no Instagram). Cada um virou um `test_bug_NN_*` em
 | 3 | `object_story_spec` bloqueado em dev mode | App Meta em dev mode rejeita page posts via API | `check_app_mode` no doctor → seta `FALLBACK_DARK_POST=true` → anúncios usam `/page_id/feed` (dark post). Transparente pro user. Test: `test_bug_03_dev_mode_detection` |
 | 4 | Dinâmico criando 15 ads em vez de 1 | Plano anterior fazia produto cartesiano no client | `skills/anuncios/` emite **1 ad com `asset_feed_spec`** — Meta combina. Test: `test_bug_04_no_cartesian_in_dynamic` |
 | 5 | `media_fbid` reusado entre posts diferentes | Cache key só usava hash do arquivo | Cache composto `sha256(file) + post_id`. Test: `test_bug_05_media_fbid_hygiene` |
-| 6 | Nomenclatura hardcoded (`[FORMULARIO][X][AUTO]` não funcionava) | Placeholder system inexistente | `lib/nomenclatura.sh` + templates customizáveis em `CLAUDE.md` com regex `[a-zA-Z-]*` cobrindo hífen |
+| 6 | Nomenclatura hardcoded (`[FORMULARIO][X][AUTO]` não funcionava) | Placeholder system inexistente | `lib/nomenclatura.sh` + templates customizáveis em `CLAUDE.md` com regex `[a-zA-Z-]*` cobrindo hífen. Cobertura: `tests/02-components.sh` (asserts em `nomenclatura_apply` + placeholder strip) |
 | 7 | Privacy URL do Instagram aceita no form | Validação só checava HTTP 200 | `lib/privacy-validator.sh` — 3 camadas (HEAD, fetch com UA, keyword match PT+EN), rejeita domínios `instagram.com`. Test: `test_bug_07_privacy_policy_instagram` |
 | 8 | Lead form sem `disqualified_thank_you_page` | Cliente-side não validava | Skill `lead-forms/` bloqueia POST sem as duas thank you pages. Test: `test_bug_08_lead_form_thankyou_duo` |
-| 9 | Sem rollback quando falhava mid-run | Não existia manifest de run | `lib/rollback.sh` + `lib/_py/manifest.py` — topológico, idempotente, retry em 613/80004 |
+| 9 | Sem rollback quando falhava mid-run | Não existia manifest de run | `lib/rollback.sh` + `lib/_py/manifest.py` — topológico, idempotente, retry em 613/80004. Cobertura: `tests/02-components.sh` (ordem topológica + idempotência 404) + `tests/14-integracao.sh` (rollback mid-run) |
 | 10 | Sem preflight antes de POST | Usuário descobria erros só no 4º passo | `/meta-ads-doctor --silent` roda como preflight interno. 10 checks. Test: `test_bug_10_preflight_doctor` |
 
 ### Arquitetura final
@@ -32,7 +32,7 @@ campanha de formulário no Instagram). Cada um virou um `test_bug_NN_*` em
 meta-ads-pro/
 ├── .claude-plugin/plugin.json         # manifest v1.0.0
 ├── install.sh / uninstall.sh          # bash 3.2+ portable
-├── commands/                          # 13 slash commands (thin wrappers)
+├── commands/                          # 14 slash commands (thin wrappers)
 │   ├── meta-ads.md                    # orquestradora
 │   ├── meta-ads-setup.md
 │   ├── meta-ads-doctor.md
@@ -47,7 +47,7 @@ meta-ads-pro/
 │   ├── meta-ads-rollback.md
 │   ├── meta-ads-update.md
 │   └── meta-ads-analyze-telemetry.md
-├── skills/                            # 10 sub-skills (SKILL.md + fluxo)
+├── skills/                            # 1 orquestradora + 10 sub-skills (SKILL.md + fluxo)
 │   ├── orquestradora/
 │   ├── setup/  doctor/  campanha/  conjuntos/
 │   ├── anuncios/  lead-forms/
@@ -80,7 +80,7 @@ meta-ads-pro/
 │   ├── feature_flags_get.py
 │   ├── detect_pattern.py / log_unknown_error.py
 │   └── leads_to_csv.py
-└── tests/                             # 14 suítes + cleanup + run_all
+└── tests/                             # 17 suítes + cleanup + run_all (03 reservado pra preview visual, sem suite dedicada)
     ├── 00-regression-filipe.sh        # 10 bugs — regressão permanente
     ├── 01-lint.sh                     # shellcheck zero warnings
     ├── 02-components.sh               # unit libs (87+ testes)
@@ -89,6 +89,7 @@ meta-ads-pro/
     ├── 10-regras.sh  11-insights.sh
     ├── 12-import-existing.sh  13-dry-run.sh
     ├── 14-integracao.sh  15-e2e.sh  16-stress.sh
+    ├── 17-smoke-live.sh               # smoke com token real (opt-in via --smoke)
     ├── cleanup.sh / run_all.sh / fixtures/ reports/
 ```
 
@@ -101,7 +102,7 @@ meta-ads-pro/
 | Wall-time CP1 | ~40 min (21 tasks, 7 commits) |
 | Wall-time total CP1-CP4 | ~3-4h distribuído |
 | Commits totais | 49 commits na `feature/cp4-release` |
-| Testes automatizados | 146+ (295 chamadas de teste distribuídas em 14 arquivos) |
+| Testes automatizados | 146+ (295 chamadas de teste distribuídas em 17 arquivos) |
 | Bugs do plano corrigidos durante implementação | 1 real (str(False)) + 4 compat macOS |
 | Bugs do caso Filipe fixados com regression test | **10/10** |
 
@@ -331,7 +332,7 @@ e5d94ce feat(lib): privacy-validator 3 camadas bilíngue + cache 24h
 
 - `install.sh` com auto-desinstall da versão antiga + backup + cross-platform deps check
 - `uninstall.sh` com wipe opcional de dados runtime
-- `README.md` completo (quickstart, 13 commands, 5 exemplos de destino, troubleshooting, contributing, license)
+- `README.md` completo (quickstart, 14 commands, 5 exemplos de destino, troubleshooting, contributing, license)
 - `CHANGELOG.md` com entry v1.0.0 detalhado (9 sub-skills, 10 bugs fixados com subcode, upgrade path)
 - `LEARNINGS.md` final (este arquivo) — resumo dos 4 CPs, arquitetura consolidada, commits
 - Tag `v1.0.0` + GitHub Release (via `gh release create`)
