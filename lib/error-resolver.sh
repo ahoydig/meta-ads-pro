@@ -153,6 +153,92 @@ apply_fix_to_body() {
   esac
 }
 
+# ─── switch_to_dark_post_flow ─────────────────────────────────────────────────
+# Fix bug #3: app em dev mode → Graph rejeita object_story_spec.
+# Workaround: criar dark post (feed published=false) usando page access token,
+# depois re-POST o creative com object_story_id em vez de object_story_spec.
+#
+# Input:  $1 = body JSON original que falhou (tem object_story_spec)
+# Output: novo body JSON (object_story_id + call_to_action preservado)
+#
+# Requer: PAGE_ACCESS_TOKEN no env.
+# Dependências: upload_dark_post (lib/upload_media.sh) quando há image_hash
+# fresh; aqui refazemos com message+link (sem reusar image_hash).
+switch_to_dark_post_flow() {
+  local original_body="$1"
+  [[ -n "$original_body" ]] || {
+    echo "switch_to_dark_post_flow: body vazio" >&2
+    return 1
+  }
+
+  local page_id caption link cta_json image_hash
+  page_id=$(echo "$original_body"    | jq -r '.object_story_spec.page_id // empty')
+  caption=$(echo "$original_body"    | jq -r '.object_story_spec.link_data.message // .object_story_spec.video_data.message // empty')
+  link=$(echo "$original_body"       | jq -r '.object_story_spec.link_data.link // empty')
+  cta_json=$(echo "$original_body"   | jq -c '.object_story_spec.link_data.call_to_action // .object_story_spec.video_data.call_to_action // null')
+  image_hash=$(echo "$original_body" | jq -r '.object_story_spec.link_data.image_hash // empty')
+
+  [[ -n "$page_id" ]] || {
+    echo "switch_to_dark_post_flow: page_id ausente no object_story_spec" >&2
+    return 1
+  }
+
+  local page_token="${PAGE_ACCESS_TOKEN:-}"
+  if [[ -z "$page_token" ]]; then
+    # tenta buscar via token do usuário
+    local user_token="${META_ACCESS_TOKEN:-}"
+    [[ -n "$user_token" ]] || {
+      echo "switch_to_dark_post_flow: PAGE_ACCESS_TOKEN nem META_ACCESS_TOKEN disponíveis" >&2
+      return 1
+    }
+    local api_ver="${META_API_VERSION:-v25.0}"
+    page_token=$(curl -sS \
+      "https://graph.facebook.com/${api_ver}/${page_id}?fields=access_token&access_token=${user_token}" \
+      | jq -r '.access_token // empty')
+    [[ -n "$page_token" ]] || {
+      echo "switch_to_dark_post_flow: page token indisponível (pages_manage_posts/pages_read_engagement scope?)" >&2
+      return 1
+    }
+  fi
+
+  local api_ver="${META_API_VERSION:-v25.0}"
+
+  # Cria dark post via /{page_id}/feed published=false
+  local curl_args=(-sS -X POST "https://graph.facebook.com/${api_ver}/${page_id}/feed"
+    -F "message=${caption}"
+    -F "published=false"
+    -F "access_token=${page_token}")
+  [[ -n "$link" ]] && curl_args+=(-F "link=${link}")
+
+  # Se tem image_hash, reaproveita via attached_media (foto já na biblioteca)
+  # Nota: bug #5 diz "nunca reusar media_fbid entre posts" — aqui é o MESMO
+  # run que falhou, então criar UM novo post e abandonar o antigo é seguro.
+  if [[ -n "$image_hash" ]]; then
+    curl_args+=(-F "image_hash=${image_hash}")
+  fi
+
+  local post_response post_id
+  post_response=$(curl "${curl_args[@]}")
+  post_id=$(echo "$post_response" | jq -r '.id // empty')
+  [[ -n "$post_id" ]] || {
+    echo "switch_to_dark_post_flow: falhou ao criar dark post — $post_response" >&2
+    return 1
+  }
+
+  # Registra no manifest pra rollback (se manifest_add disponível)
+  if command -v manifest_add >/dev/null 2>&1; then
+    manifest_add "dark_post" "$post_id" 2>/dev/null || true
+  fi
+
+  # Constrói novo body: object_story_id + call_to_action preservado
+  if [[ "$cta_json" == "null" || -z "$cta_json" ]]; then
+    jq -n --arg pid "$post_id" '{object_story_id: $pid}'
+  else
+    jq -n --arg pid "$post_id" --argjson cta "$cta_json" \
+      '{object_story_id: $pid, call_to_action: $cta}'
+  fi
+}
+
 log_unknown_error() {
   local code="$1" subcode="$2" response="$3" path="$4"
   local file="$LEARNINGS_DIR/unknown_errors.jsonl"
