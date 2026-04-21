@@ -5,7 +5,7 @@
 ██║╚██╔╝██║██╔══╝     ██║   ██╔══██║    ██╔══██║██║  ██║╚════██║    ██╔═══╝ ██╔══██╗██║   ██║
 ██║ ╚═╝ ██║███████╗   ██║   ██║  ██║    ██║  ██║██████╔╝███████║    ██║     ██║  ██║╚██████╔╝
 ╚═╝     ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝    ╚═╝  ╚═╝╚═════╝ ╚══════╝    ╚═╝     ╚═╝  ╚═╝ ╚═════╝
-                            plugin Claude Code · v1.0.3 · by @flavioahoy
+                            plugin Claude Code · v1.0.4 · by @flavioahoy
 ```
 
 **Gerenciamento completo de Meta Ads via Graph API v25.0 direto no Claude Code.**
@@ -21,7 +21,7 @@ resolver com auto-learning e preview ASCII + HTML. Tudo portável bash 3.2+ (mac
 
 ```bash
 claude plugin marketplace add https://github.com/ahoydig/meta-ads-pro
-claude plugin install meta-ads-pro@meta-ads-pro
+claude plugin install meta-ads-pro@meta-ads-pro-marketplace
 ```
 
 Depois **sai do Claude Code e abre sessão nova** (os commands só aparecem no startup).

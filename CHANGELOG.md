@@ -5,6 +5,49 @@ versionamento [SemVer](https://semver.org/).
 
 ---
 
+## [v1.0.4] — 2026-04-21
+
+Hotfix release — elimina namespace forçado no slash command.
+
+### Fixed
+
+- **`/meta-ads-menu` dava "Unknown command"** — Claude Code força namespace
+  quando o `name` do marketplace é igual ao `name` do plugin. Com marketplace
+  e plugin ambos `meta-ads-pro`, o único command invocável era
+  `/meta-ads-pro:meta-ads-menu`, e o curto `/meta-ads-menu` falhava.
+  Fix: renomeado marketplace para `meta-ads-pro-marketplace`. Plugin continua
+  `meta-ads-pro`. Agora `/meta-ads-menu` funciona direto sem namespace.
+- **Auto-execução de comando dentro do banner** — o hint do final do menu
+  dizia `Digite: /meta-ads-menu jornadas` em texto puro. Claude Code (ou
+  hooks de sessão) interpretava o `/...` no output como comando a executar,
+  disparando "Unknown command" logo após o banner renderizar. Fix: hints
+  agora vêm em backticks (`` `/meta-ads-menu jornadas` ``) pra sinalizar
+  que são literais.
+- **Version hardcoded v1.0.2 no menu** — atualizado pra v1.0.4.
+
+### Breaking (migration path)
+
+Install command mudou:
+
+```bash
+# Antes (v1.0.3):
+claude plugin install meta-ads-pro@meta-ads-pro
+
+# Agora (v1.0.4+):
+claude plugin install meta-ads-pro@meta-ads-pro-marketplace
+```
+
+Pra migrar:
+
+```bash
+claude plugin uninstall meta-ads-pro@meta-ads-pro
+claude plugin marketplace remove meta-ads-pro
+claude plugin marketplace add https://github.com/ahoydig/meta-ads-pro
+claude plugin install meta-ads-pro@meta-ads-pro-marketplace
+```
+
+---
+
 ## [v1.0.3] — 2026-04-21
 
 Hotfix release — elimina duplicatas no autocomplete do Claude Code.

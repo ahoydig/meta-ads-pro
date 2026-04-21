@@ -37,7 +37,7 @@ add_warning() {
 # --- banner ---------------------------------------------------------------
 cat <<'BANNER'
 ╔════════════════════════════════════════╗
-║   META ADS PRO · Installer v1.0.3      ║
+║   META ADS PRO · Installer v1.0.4      ║
 ║        by @flavioahoy                  ║
 ╚════════════════════════════════════════╝
 BANNER
@@ -135,7 +135,7 @@ now = datetime.now(timezone.utc).isoformat().replace('+00:00','Z')
 d.setdefault('plugins', {})['meta-ads-pro@local'] = [{
     'scope': 'user',
     'installPath': install_path,
-    'version': '1.0.3',
+    'version': '1.0.4',
     'installedAt': now,
     'lastUpdated': now
 }]

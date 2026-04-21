@@ -47,7 +47,7 @@ Em seguida, imprima o menu principal BYTE-EXATO abaixo:
 
 ```
 ╔══════════════════════════════════════════════════════════════════╗
-║  🎯 Comandos disponíveis (v1.0.2)                                ║
+║  🎯 Comandos disponíveis (v1.0.4)                                ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
 ║  ⚙  SETUP & SAÚDE                                                ║
@@ -75,7 +75,7 @@ Em seguida, imprima o menu principal BYTE-EXATO abaixo:
 ║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
 
-💡 Primeira vez aqui? Digite:  /meta-ads-menu jornadas
+💡 Primeira vez aqui? Rode `/meta-ads-menu jornadas` pra ver fluxos típicos.
 ```
 
 Fim. Não invoque nenhuma sub-skill. Não pergunte nada. Só pare.
@@ -125,7 +125,7 @@ Imprimir as 4 boxes BYTE-EXATO abaixo:
 │  3. /meta-ads-analyze-telemetry → top erros, taxa de sucesso  │
 └───────────────────────────────────────────────────────────────┘
 
-💡 Voltar pro menu:  /meta-ads-menu
+💡 Voltar pro menu: rode `/meta-ads-menu`.
 ```
 
 Fim. Não invoque nenhuma sub-skill. Não pergunte nada. Só pare.
