@@ -48,7 +48,12 @@ run_layer() {
 run_layer "Camada 0: regressão Filipe"   "$SCRIPT_DIR/00-regression-filipe.sh" || exit 1
 run_layer "Camada 1: lint"               "$SCRIPT_DIR/01-lint.sh"              || exit 1
 run_layer "Camada 2: components"         "$SCRIPT_DIR/02-components.sh"        || exit 1
-# Camadas 3–5 (scripts 04..16) adicionadas nos CPs correspondentes
+# Camada 3 (04-doctor) é on-demand — rodada via /meta-ads-doctor, não no runner
+# Camadas 4–5 (CP2: campanha/conjuntos/anúncios CRUD) — SKIP gracioso
+# se arquivo não existe ainda (owners submetem conforme forem concluindo)
+run_layer "Camada 4a: campanha CRUD"       "$SCRIPT_DIR/05-campanha-crud.sh"       || exit 1
+run_layer "Camada 4b: conjuntos targeting" "$SCRIPT_DIR/06-conjuntos-targeting.sh" || exit 1
+run_layer "Camada 4c: anúncios upload"     "$SCRIPT_DIR/07-anuncios-upload.sh"     || exit 1
 
 # ── smoke live: só com --smoke ────────────────────────────────────────────────
 if [[ "${SMOKE_FLAG}" == "1" ]]; then
