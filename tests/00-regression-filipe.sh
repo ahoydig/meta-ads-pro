@@ -34,7 +34,7 @@ test_bug_10_preflight_doctor() {
     return
   fi
 
-  # shellcheck source=../lib/preflight.sh
+  # shellcheck source=../lib/preflight.sh disable=SC1091
   source "$preflight"
 
   unset FALLBACK_DARK_POST || true
@@ -50,11 +50,51 @@ test_bug_10_preflight_doctor() {
   fi
 }
 
-# ── bugs 01–09: adicionados nos CPs 2a, 2b, 2c, 3a, 3b ──────────────────────
+# ── Bug #1: is_adset_budget_sharing_enabled ausente em campanha ABO ──────────
+# Meta Graph API v25.0 rejeita POST /campaigns sem o campo is_adset_budget_sharing_enabled
+# quando o objective é ABO (sem daily_budget na campanha). Erro 100 subcode 4834011.
+# Fix esperado: error-resolver adiciona { "is_adset_budget_sharing_enabled": false }
+# automaticamente e re-tenta o POST. Campanha deve ser criada com sucesso.
+test_bug_01_ABO_budget_sharing_flag() {
+  local graph_api_sh="$PLUGIN_ROOT/lib/graph_api.sh"
+  if [[ ! -f "$graph_api_sh" ]]; then
+    echo "SKIP test_bug_01: graph_api.sh não existe ainda"
+    PASS=$((PASS + 1))
+    return
+  fi
+
+  # shellcheck source=../lib/graph_api.sh disable=SC1091
+  source "$graph_api_sh"
+
+  local account="${AD_ACCOUNT_ID:-act_763408067802379}"
+  local name
+  name="TEST_REG_BUG01_$$_$(date +%s)"
+
+  # Payload SEM is_adset_budget_sharing_enabled — força o resolver a preencher.
+  local payload
+  payload=$(jq -nc --arg n "$name" \
+    '{name:$n, objective:"OUTCOME_LEADS", status:"PAUSED", special_ad_categories:[]}')
+
+  local resp id
+  resp=$(graph_api POST "${account}/campaigns" "$payload") \
+    || _fail "test_bug_01_ABO_budget_sharing_flag" "POST falhou, resolver não aplicou fix: $resp"
+  id=$(echo "$resp" | jq -r '.id // empty')
+  [[ -n "$id" && "$id" != "null" ]] \
+    || _fail "test_bug_01_ABO_budget_sharing_flag" "response sem id: $resp"
+
+  # cleanup: pause + delete (idempotente)
+  GRAPH_API_SKIP_RESOLVER=1 graph_api POST "$id" '{"status":"PAUSED"}' >/dev/null 2>&1 || true
+  GRAPH_API_SKIP_RESOLVER=1 graph_api DELETE "$id" >/dev/null 2>&1 || true
+
+  _pass "test_bug_01_ABO_budget_sharing_flag (id=$id)"
+}
+
+# ── bugs 02–09: adicionados nos CPs 2b, 2c, 3a, 3b ───────────────────────────
 
 # ── execução ──────────────────────────────────────────────────────────────────
 test_bug_10_preflight_doctor
+test_bug_01_ABO_budget_sharing_flag
 
 echo ""
-echo "regressão Filipe: $PASS passou, $FAIL falhou (bugs 01-09 adicionados nos próximos CPs)"
+echo "regressão Filipe: $PASS passou, $FAIL falhou (bugs 02-09 adicionados nos próximos CPs)"
 [[ "$FAIL" -eq 0 ]]
