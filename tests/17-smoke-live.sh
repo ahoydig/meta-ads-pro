@@ -176,8 +176,10 @@ form_payload=$(jq -nc --arg url "$PRIVACY_URL" '{
   ],
   privacy_policy: {url: $url},
   context_card: {
+    style: "LIST_STYLE",
     title: "Workshop Claude Code",
-    content: ["Inscreva-se pra receber detalhes do workshop."]
+    content: ["Inscreva-se pra receber detalhes do workshop."],
+    button_text: "Continuar"
   },
   thank_you_page: {
     title: "Obrigado!",
