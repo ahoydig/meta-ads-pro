@@ -1,0 +1,7 @@
+*.log
+.DS_Store
+/tests/reports/
+/tests/fixtures/tmp/
+node_modules/
+.env
+.env.local
