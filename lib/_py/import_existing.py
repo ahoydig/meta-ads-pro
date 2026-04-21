@@ -194,7 +194,7 @@ def main() -> int:
         print(f"import_existing: {e}", file=sys.stderr)
         return 1
 
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M%S")
     out_file = out_dir / f"imported-{ts}.json"
     try:
         with open(out_file, "w", encoding="utf-8") as f:

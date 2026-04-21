@@ -36,15 +36,19 @@ def _strip_markdown_fence(text: str) -> str:
 
 def _extract_json_array(text: str):
     """Tenta parsear JSON array; se falhar, tenta extrair o primeiro bloco
-    delimitado por colchetes balanceados."""
+    delimitado por colchetes balanceados.
+
+    Nota: o regex fallback é greedy (pega do 1º `[` ao último `]`). Se o modelo
+    retornar prosa com colchetes antes do JSON real (ex.: "considere [este
+    ângulo]. Resposta: [\"a\"]"), o parse vai falhar. O prompt em
+    copy_prompt_builder.py instrui "APENAS JSON array", então é edge case
+    improvável — mas documentado pra quem vier depois."""
     cleaned = _strip_markdown_fence(text)
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
         pass
 
-    # fallback: regex pro primeiro array top-level (non-greedy seria unsafe
-    # com strings aninhadas; usamos greedy e validamos)
     m = re.search(r"\[.*\]", cleaned, re.DOTALL)
     if m:
         try:
@@ -80,7 +84,14 @@ def main() -> int:
         return 1
 
     model = os.environ.get("META_ADS_COPY_MODEL", "claude-sonnet-4-5")
-    max_tokens = int(os.environ.get("META_ADS_COPY_MAX_TOKENS", "1024"))
+    try:
+        max_tokens = int(os.environ.get("META_ADS_COPY_MAX_TOKENS", "1024"))
+    except ValueError:
+        print(
+            "claude_invoke_api: META_ADS_COPY_MAX_TOKENS inválido, usando 1024",
+            file=sys.stderr,
+        )
+        max_tokens = 1024
 
     try:
         client = Anthropic(api_key=api_key)

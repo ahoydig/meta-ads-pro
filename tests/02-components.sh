@@ -427,6 +427,32 @@ test_claude_invoke_api_missing_key() {
   fi
 }
 
+test_claude_invoke_api_invalid_max_tokens() {
+  # M1: META_ADS_COPY_MAX_TOKENS inválido não deve crashar — volta pro default 1024
+  local stderr_output rc
+  stderr_output=$(ANTHROPIC_API_KEY="" META_ADS_COPY_MAX_TOKENS="abc" \
+    python3 "$(dirname "$0")/../lib/_py/claude_invoke_api.py" "prompt" 2>&1 >/dev/null) || rc=$?
+  # exit 1 (API key ausente) é esperado — queremos só garantir que não crashou com ValueError
+  if [[ "${rc:-0}" -eq 1 ]] && [[ "$stderr_output" != *"Traceback"* ]]; then
+    _pass "test_claude_invoke_api_invalid_max_tokens"
+  else
+    _fail "test_claude_invoke_api_invalid_max_tokens" "rc='${rc:-0}' stderr='$stderr_output'"; exit 1
+  fi
+}
+
+test_copy_prompt_builder_voice_missing() {
+  # M3: voice-file ausente avisa em stderr mas não crasha
+  local stderr_output rc
+  stderr_output=$(python3 "$(dirname "$0")/../lib/_py/copy_prompt_builder.py" \
+    --field headline --count 2 --objective OUTCOME_LEADS --product X \
+    --voice-file /nonexistent/voice.md 2>&1 >/dev/null) || rc=$?
+  if [[ "${rc:-0}" -eq 0 && "$stderr_output" == *"voice-file não aplicado"* ]]; then
+    _pass "test_copy_prompt_builder_voice_missing"
+  else
+    _fail "test_copy_prompt_builder_voice_missing" "rc='${rc:-0}' stderr='$stderr_output'"; exit 1
+  fi
+}
+
 test_claude_invoke_api_usage() {
   local rc
   python3 "$(dirname "$0")/../lib/_py/claude_invoke_api.py" >/dev/null 2>&1 || rc=$?
@@ -538,8 +564,10 @@ test_media_hash_missing_file
 test_copy_prompt_builder_headline
 test_copy_prompt_builder_voice_file
 test_copy_prompt_builder_invalid_field
+test_copy_prompt_builder_voice_missing
 test_claude_invoke_api_missing_key
 test_claude_invoke_api_usage
+test_claude_invoke_api_invalid_max_tokens
 test_dry_run_manifest_append
 test_dry_run_manifest_body_string
 test_import_existing_usage

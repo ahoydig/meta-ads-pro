@@ -60,10 +60,21 @@ def build_prompt(
     if voice_file:
         try:
             content = Path(voice_file).read_text(encoding="utf-8")
-            voice_guidance = f"\n\n## Voz da marca\n\n{content[:MAX_VOICE_CHARS]}"
-        except (FileNotFoundError, OSError):
-            # silencioso — voice é opcional
-            pass
+            if len(content) > MAX_VOICE_CHARS:
+                print(
+                    f"copy_prompt_builder: voice-file truncado a "
+                    f"{MAX_VOICE_CHARS}c (original {len(content)}c)",
+                    file=sys.stderr,
+                )
+            voice_guidance = (
+                f"\n\n## Voz da marca\n\n{content[:MAX_VOICE_CHARS]}"
+            )
+        except (FileNotFoundError, OSError) as e:
+            # Voice é opcional mas se foi solicitado, avisa que não foi aplicado.
+            print(
+                f"copy_prompt_builder: voice-file não aplicado ({voice_file}): {e}",
+                file=sys.stderr,
+            )
 
     image_line = "- Imagem de referência anexada\n" if image_path else ""
 
