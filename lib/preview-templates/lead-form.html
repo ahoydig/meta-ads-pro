@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Preview Lead Form — {{form_name}}</title>
+<style>
+body{margin:0;padding:2em;background:#f0f2f5;display:flex;justify-content:center;font-family:-apple-system,Segoe UI,sans-serif}
+.phone{width:375px;background:#fff;border-radius:24px;overflow:hidden;min-height:600px;display:flex;flex-direction:column}
+.header{background:#1877F2;color:#fff;padding:16px;text-align:center;font-weight:600}
+.screen{padding:20px;flex:1;display:none}
+.screen.active{display:block}
+h2{font-size:1.2em;margin:0 0 12px}
+p{line-height:1.5;color:#333;margin:0 0 16px}
+label{display:block;font-size:.85em;margin-bottom:6px;color:#65676b;font-weight:600}
+input,select{width:100%;padding:12px;border:1px solid #ccd0d5;border-radius:6px;font-size:1em;margin-bottom:16px;box-sizing:border-box}
+.options{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.options label{display:flex;align-items:center;gap:8px;padding:10px;border:1px solid #ccd0d5;border-radius:6px;cursor:pointer}
+.btn{width:100%;padding:14px;background:#1877F2;color:#fff;border:none;border-radius:6px;font-weight:600;font-size:1em;cursor:pointer}
+.btn.secondary{background:#e4e6eb;color:#050505}
+.thank-you{text-align:center;padding:40px 20px}
+.thank-icon{font-size:3em;margin-bottom:16px}
+.privacy{font-size:.75em;color:#65676b;margin-top:16px;text-align:center}
+.privacy a{color:#1877F2}
+</style>
+</head>
+<body>
+<div class="phone">
+<div class="header">📋 {{form_name}}</div>
+
+<!-- Intro -->
+<div class="screen active" id="intro">
+<h2>{{intro_title}}</h2>
+<p>{{intro_description}}</p>
+<button class="btn" onclick="go('questions')">Continuar</button>
+</div>
+
+<!-- Perguntas (dinâmicas) -->
+<div class="screen" id="questions">
+<label>Nome completo</label>
+<input id="q_name" type="text" placeholder="Seu nome"/>
+<label>E-mail</label>
+<input id="q_email" type="email"/>
+<label>Telefone</label>
+<input id="q_phone" type="tel"/>
+{{#custom_questions}}
+<label>{{label}}</label>
+{{#options}}
+<div class="options">{{#choices}}<label><input type="radio" name="{{key}}" value="{{value}}" data-qualify="{{qualifier}}"> {{label}}</label>{{/choices}}</div>
+{{/options}}
+{{^options}}<input type="text" name="{{key}}"/>{{/options}}
+{{/custom_questions}}
+<button class="btn" onclick="submit()">Enviar</button>
+<div class="privacy">Ao enviar, você concorda com a <a href="{{privacy_url}}" target="_blank">Política de Privacidade</a>.</div>
+</div>
+
+<!-- Thank you qualificado -->
+<div class="screen" id="thanks-q">
+<div class="thank-you">
+<div class="thank-icon">✅</div>
+<h2>{{thanks_qualified_title}}</h2>
+<p>{{thanks_qualified_body}}</p>
+<button class="btn">{{thanks_qualified_cta}}</button>
+</div>
+</div>
+
+<!-- Thank you desqualificado -->
+<div class="screen" id="thanks-d">
+<div class="thank-you">
+<div class="thank-icon">🙏</div>
+<h2>{{thanks_disqualified_title}}</h2>
+<p>{{thanks_disqualified_body}}</p>
+<button class="btn secondary">{{thanks_disqualified_cta}}</button>
+</div>
+</div>
+</div>
+
+<script>
+function go(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active')}
+function submit(){
+  const qualify=[...document.querySelectorAll('input[type=radio]:checked')].every(r=>r.dataset.qualify==='true');
+  go(qualify?'thanks-q':'thanks-d');
+}
+</script>
+</body>
+</html>

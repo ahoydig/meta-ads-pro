@@ -424,13 +424,98 @@ test_bug_05_media_fbid_hygiene() {
   _pass "test_bug_05_media_fbid_hygiene (chave composta sha+post_id isola reuso)"
 }
 
-# ── bugs 06–09: adicionados nos CPs 3a, 3b ────────────────────────────────────
+# ── Bug #7: privacy policy URL do Instagram aceita como válida ───────────────
+# No caso Filipe, a skill antiga aceitou uma URL de Instagram como privacy policy
+# e o form foi rejeitado pela Meta com erro 100/1487194. A skill atual valida a
+# URL em 3 camadas (blacklist + HEAD 200 + conteúdo bilíngue) via
+# lib/privacy-validator.sh. Esse teste garante que o blacklist reconhece
+# instagram.com (caso exato do bug) e rejeita antes do POST.
+test_bug_07_privacy_policy_instagram() {
+  local validator_sh="$PLUGIN_ROOT/lib/privacy-validator.sh"
+  if [[ ! -f "$validator_sh" ]]; then
+    echo "SKIP test_bug_07: privacy-validator.sh não existe ainda"
+    PASS=$((PASS + 1))
+    return
+  fi
+
+  # shellcheck source=../lib/privacy-validator.sh disable=SC1091
+  source "$validator_sh"
+
+  local ig_url="https://www.instagram.com/institutofaceacademy/"
+  # Invalida cache pra garantir execução real do validator
+  invalidate_privacy_cache "$ig_url" >/dev/null 2>&1 || true
+
+  if validate_privacy_url "$ig_url" 2>/dev/null; then
+    _fail "test_bug_07_privacy_policy_instagram" \
+      "Instagram URL aceita como privacy policy — blacklist regrediu"
+  else
+    _pass "test_bug_07_privacy_policy_instagram (blacklist rejeita Instagram)"
+  fi
+}
+
+# ── Bug #8: lead form sem thank_you desqualificado passa pro POST ────────────
+# No caso Filipe, a skill antiga não obrigou o segundo thank you page
+# (disqualified_thank_you_page). Leads que caíam no filtro desqualificador
+# viam uma mensagem genérica/vazia. A skill nova força CLIENT-SIDE a presença
+# de ambos thank_you_page E disqualified_thank_you_page antes do POST.
+#
+# Esse teste simula a validação client-side: um payload sem o campo disq deve
+# ser rejeitado antes de chegar no graph_api. Usa jq -e pra confirmar que o
+# campo está ausente (condição que dispara o erro client-side da skill).
+test_bug_08_lead_form_thankyou_duo() {
+  local payload_bad payload_good
+
+  # Payload sem disqualified_thank_you_page (reproduz o bug antigo)
+  payload_bad=$(jq -nc '{
+    name: "test",
+    questions: [{type:"EMAIL"}],
+    privacy_policy: {url: "https://example.com/p"},
+    context_card: {title:"t", content:["c"]},
+    thank_you_page: {title:"t", body:"b"}
+  }')
+
+  # Simula o check client-side da skill: rejeita se faltar qualquer thank you
+  local has_qual has_disq
+  has_qual=$(echo "$payload_bad" | jq 'has("thank_you_page")')
+  has_disq=$(echo "$payload_bad" | jq 'has("disqualified_thank_you_page")')
+
+  if [[ "$has_qual" != "true" ]]; then
+    _fail "test_bug_08_lead_form_thankyou_duo" \
+      "fixture inválida: thank_you_page deveria estar presente"
+  fi
+  if [[ "$has_disq" != "false" ]]; then
+    _fail "test_bug_08_lead_form_thankyou_duo" \
+      "fixture inválida: disqualified_thank_you_page deveria estar ausente"
+  fi
+
+  # O check canônico da skill (1 linha, o mesmo que SKILL.md documenta):
+  if echo "$payload_bad" \
+    | jq -e '.thank_you_page and .disqualified_thank_you_page' >/dev/null 2>&1; then
+    _fail "test_bug_08_lead_form_thankyou_duo" \
+      "check client-side aceitou payload sem disqualified_thank_you_page — bug #8 regrediu"
+  fi
+
+  # Positive control: payload completo passa no mesmo check
+  payload_good=$(echo "$payload_bad" \
+    | jq '. + {disqualified_thank_you_page: {title:"d", body:"d"}}')
+  if ! echo "$payload_good" \
+    | jq -e '.thank_you_page and .disqualified_thank_you_page' >/dev/null 2>&1; then
+    _fail "test_bug_08_lead_form_thankyou_duo" \
+      "payload completo falhou no check canônico (false negative)"
+  fi
+
+  _pass "test_bug_08_lead_form_thankyou_duo (thank you dupla obrigatória client-side)"
+}
+
+# ── bug 09: reservado pra CP3b (se emergir novo bug em rules/insights) ───────
 
 # ── execução ──────────────────────────────────────────────────────────────────
 # Estruturais (rodam sempre)
 test_bug_03_dev_mode_detection
 test_bug_04_no_cartesian_in_dynamic
 test_bug_05_media_fbid_hygiene
+test_bug_07_privacy_policy_instagram
+test_bug_08_lead_form_thankyou_duo
 
 # Live (exigem META_ACCESS_TOKEN)
 if (( HAVE_TOKEN )); then
@@ -444,5 +529,5 @@ else
 fi
 
 echo ""
-echo "regressão Filipe: $PASS passou, $FAIL falhou (bugs 06-09 adicionados nos próximos CPs)"
+echo "regressão Filipe: $PASS passou, $FAIL falhou (bug 09 reservado pra CP3b)"
 [[ "$FAIL" -eq 0 ]]

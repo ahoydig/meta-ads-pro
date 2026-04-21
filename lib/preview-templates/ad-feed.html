@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Preview Feed — {{ad_name}}</title>
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#18191a;color:#e4e6eb;margin:0;padding:2em;display:flex;justify-content:center}
+.phone{width:375px;background:#242526;border-radius:24px;overflow:hidden;box-shadow:0 0 40px rgba(0,0,0,.5)}
+.post{background:#242526;padding:12px}
+.header{display:flex;align-items:center;gap:8px}
+.avatar{width:40px;height:40px;border-radius:50%;background:#1877F2;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#fff}
+.page{display:flex;flex-direction:column}
+.page-name{font-weight:600;font-size:.95em}
+.page-sub{color:#b0b3b8;font-size:.8em}
+.sponsored{color:#b0b3b8;font-size:.75em;margin-top:2px}
+.primary-text{padding:12px 0;white-space:pre-wrap;font-size:.95em;line-height:1.4}
+.media{width:100%;aspect-ratio:1/1;background:url({{image_url}}) center/cover #444}
+.link-card{background:#3a3b3c;padding:10px 12px;display:flex;justify-content:space-between;align-items:center}
+.headline{font-weight:600;font-size:1em}
+.description{color:#b0b3b8;font-size:.85em}
+.cta{background:#e4e6eb;color:#050505;padding:8px 16px;border-radius:6px;font-weight:600;font-size:.9em;border:none}
+.actions{display:flex;justify-content:space-around;padding:8px;border-top:1px solid #3a3b3c}
+.action{color:#b0b3b8;font-size:.85em;display:flex;align-items:center;gap:4px}
+</style>
+</head>
+<body>
+<div class="phone">
+<div class="post">
+<div class="header">
+<div class="avatar">{{page_initial}}</div>
+<div class="page">
+<span class="page-name">{{page_name}}</span>
+<span class="page-sub">{{page_followers}} seguidores</span>
+<span class="sponsored">Patrocinado · <svg width="10" height="10" viewBox="0 0 16 16" fill="#b0b3b8"><circle cx="8" cy="8" r="7" stroke="currentColor" fill="none"/></svg></span>
+</div>
+</div>
+<div class="primary-text">{{primary_text}}</div>
+</div>
+<div class="media"></div>
+<div class="link-card">
+<div>
+<div class="headline">{{headline}}</div>
+<div class="description">{{description}}</div>
+</div>
+<button class="cta">{{cta_label}}</button>
+</div>
+<div class="actions">
+<span class="action">👍 Curtir</span>
+<span class="action">💬 Comentar</span>
+<span class="action">↗ Compartilhar</span>
+</div>
+</div>
+</body>
+</html>

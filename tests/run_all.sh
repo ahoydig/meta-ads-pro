@@ -31,7 +31,8 @@ run_layer() {
     return 0
   fi
 
-  local log="$REPORTS_DIR/$(basename "$script" .sh).log"
+  local log
+  log="$REPORTS_DIR/$(basename "$script" .sh).log"
 
   if bash "$script" 2>&1 | tee "$log"; then
     echo "✓ $name"

@@ -21,15 +21,162 @@ PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=../lib/graph_api.sh
 source "$PLUGIN_ROOT/lib/graph_api.sh"
 
-# ── guards ────────────────────────────────────────────────────────────────────
-[[ -n "${META_ACCESS_TOKEN:-}" ]] || { echo "SKIP: sem META_ACCESS_TOKEN"; exit 0; }
-[[ -n "${AD_ACCOUNT_ID:-}"     ]] || { echo "SKIP: sem AD_ACCOUNT_ID";     exit 0; }
-[[ -n "${PAGE_ID:-}"           ]] || { echo "SKIP: sem PAGE_ID";           exit 0; }
-
+# ── counters/helpers (declarados cedo pro smoke offline) ──────────────────────
 PASS=0; FAIL=0; SKIP=0
 _pass() { echo "✓ $1"; PASS=$(( PASS + 1 )); }
 _fail() { echo "✗ $1: $2" >&2; FAIL=$(( FAIL + 1 )); }
 _skip() { echo "⊘ $1: $2"; SKIP=$(( SKIP + 1 )); }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OFFLINE SMOKE — 5 destinos (gap #7 do cross-cutting CP2)
+#
+# Valida shape do payload sem chamar API. Roda SEMPRE, mesmo sem
+# META_ACCESS_TOKEN — serve pra CI rápido, lint estrutural, e pra
+# documentar o contrato dos 5 destinos em código executável.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# _assert_eq <esperado> <veio> <msg> — increments FAIL mas não retorna erro
+_assert_eq() {
+  local want="$1" got="$2" label="$3"
+  if [[ "$want" == "$got" ]]; then
+    return 0
+  fi
+  echo "  ↳ $label: esperado '$want', veio '$got'" >&2
+  return 1
+}
+
+# Gera payload de adset SEM promoted_object (usado por WEBSITE)
+_mk_adset_payload_no_po() {
+  local dt="$1" og="$2"
+  jq -nc --arg dt "$dt" --arg og "$og" '{
+    name: "STRUCT_TEST",
+    campaign_id: "111111111111",
+    status: "PAUSED",
+    destination_type: $dt,
+    optimization_goal: $og,
+    billing_event: "IMPRESSIONS",
+    daily_budget: 518,
+    targeting: {
+      geo_locations: {countries: ["BR"]},
+      targeting_automation: {advantage_audience: 0}
+    }
+  }'
+}
+
+# Gera payload de adset COM promoted_object.page_id
+_mk_adset_payload_with_po_page() {
+  local dt="$1" og="$2" page="$3"
+  jq -nc --arg dt "$dt" --arg og "$og" --arg p "$page" '{
+    name: "STRUCT_TEST",
+    campaign_id: "111111111111",
+    status: "PAUSED",
+    destination_type: $dt,
+    optimization_goal: $og,
+    billing_event: "IMPRESSIONS",
+    daily_budget: 518,
+    promoted_object: {page_id: $p},
+    targeting: {
+      geo_locations: {countries: ["BR"]},
+      targeting_automation: {advantage_audience: 0}
+    }
+  }'
+}
+
+# Gera payload de ad creative com call_to_action.type
+_mk_ad_creative_cta() {
+  local cta="$1"
+  jq -nc --arg c "$cta" '{
+    object_story_spec: {
+      page_id: "333333333333",
+      link_data: {
+        message: "msg",
+        link: "https://example.com",
+        call_to_action: {type: $c, value: {link: "https://example.com"}}
+      }
+    }
+  }'
+}
+
+# Valida shape pro payload de adset; args: label dt og has_po payload
+_validate_adset_shape() {
+  local label="$1" want_dt="$2" want_og="$3" want_po="$4" payload="$5"
+  local got_dt got_og got_be got_po_page errs=0
+  got_dt=$(echo "$payload" | jq -r '.destination_type // empty')
+  got_og=$(echo "$payload" | jq -r '.optimization_goal // empty')
+  got_be=$(echo "$payload" | jq -r '.billing_event // empty')
+  got_po_page=$(echo "$payload" | jq -r '.promoted_object.page_id // empty')
+
+  _assert_eq "$want_dt" "$got_dt" "${label}.destination_type" || errs=$((errs+1))
+  _assert_eq "$want_og" "$got_og" "${label}.optimization_goal" || errs=$((errs+1))
+  _assert_eq "IMPRESSIONS" "$got_be" "${label}.billing_event" || errs=$((errs+1))
+  if [[ "$want_po" == "yes" ]]; then
+    [[ -n "$got_po_page" ]] || { echo "  ↳ ${label}.promoted_object.page_id ausente" >&2; errs=$((errs+1)); }
+  elif [[ "$want_po" == "no" ]]; then
+    [[ -z "$got_po_page" ]] || { echo "  ↳ ${label}.promoted_object.page_id deveria estar ausente, veio '$got_po_page'" >&2; errs=$((errs+1)); }
+  fi
+  return $errs
+}
+
+# Valida shape pro creative.call_to_action.type
+_validate_cta_shape() {
+  local label="$1" want_cta="$2" payload="$3"
+  local got_cta
+  got_cta=$(echo "$payload" | jq -r '.object_story_spec.link_data.call_to_action.type // empty')
+  _assert_eq "$want_cta" "$got_cta" "${label}.call_to_action.type"
+}
+
+# Test único que valida os 5 destinos offline
+test_5_destinos_structural() {
+  local errs=0 page="222222222222"
+
+  # 1. WEBSITE (sem promoted_object, CTA LEARN_MORE)
+  local p1; p1=$(_mk_adset_payload_no_po "WEBSITE" "LINK_CLICKS")
+  _validate_adset_shape "WEBSITE" "WEBSITE" "LINK_CLICKS" "no" "$p1" || errs=$((errs+1))
+  local c1; c1=$(_mk_ad_creative_cta "LEARN_MORE")
+  _validate_cta_shape "WEBSITE" "LEARN_MORE" "$c1" || errs=$((errs+1))
+
+  # 2. ON_AD (Lead Form — promoted_object.page_id, CTA SIGN_UP)
+  local p2; p2=$(_mk_adset_payload_with_po_page "ON_AD" "LEAD_GENERATION" "$page")
+  _validate_adset_shape "ON_AD" "ON_AD" "LEAD_GENERATION" "yes" "$p2" || errs=$((errs+1))
+  local c2; c2=$(_mk_ad_creative_cta "SIGN_UP")
+  _validate_cta_shape "ON_AD" "SIGN_UP" "$c2" || errs=$((errs+1))
+
+  # 3. WHATSAPP (promoted_object.page_id, CTA WHATSAPP_MESSAGE)
+  local p3; p3=$(_mk_adset_payload_with_po_page "WHATSAPP" "CONVERSATIONS" "$page")
+  _validate_adset_shape "WHATSAPP" "WHATSAPP" "CONVERSATIONS" "yes" "$p3" || errs=$((errs+1))
+  local c3; c3=$(_mk_ad_creative_cta "WHATSAPP_MESSAGE")
+  _validate_cta_shape "WHATSAPP" "WHATSAPP_MESSAGE" "$c3" || errs=$((errs+1))
+
+  # 4. MESSENGER (promoted_object.page_id, CTA MESSAGE_PAGE/MESSENGER)
+  local p4; p4=$(_mk_adset_payload_with_po_page "MESSENGER" "CONVERSATIONS" "$page")
+  _validate_adset_shape "MESSENGER" "MESSENGER" "CONVERSATIONS" "yes" "$p4" || errs=$((errs+1))
+  local c4; c4=$(_mk_ad_creative_cta "MESSAGE_PAGE")
+  _validate_cta_shape "MESSENGER" "MESSAGE_PAGE" "$c4" || errs=$((errs+1))
+
+  # 5. PHONE_CALL (promoted_object.page_id, CTA CALL_NOW)
+  local p5; p5=$(_mk_adset_payload_with_po_page "PHONE_CALL" "QUALITY_CALL" "$page")
+  _validate_adset_shape "PHONE_CALL" "PHONE_CALL" "QUALITY_CALL" "yes" "$p5" || errs=$((errs+1))
+  local c5; c5=$(_mk_ad_creative_cta "CALL_NOW")
+  _validate_cta_shape "PHONE_CALL" "CALL_NOW" "$c5" || errs=$((errs+1))
+
+  if (( errs == 0 )); then
+    _pass "test_5_destinos_structural (5 destinos × shape)"
+  else
+    _fail "test_5_destinos_structural" "$errs erros de shape"
+  fi
+}
+
+# Roda SEMPRE o smoke offline
+test_5_destinos_structural
+
+# ── guards pros testes online ─────────────────────────────────────────────────
+if [[ -z "${META_ACCESS_TOKEN:-}" ]] || [[ -z "${AD_ACCOUNT_ID:-}" ]] || [[ -z "${PAGE_ID:-}" ]]; then
+  echo ""
+  echo "conjuntos (offline-only): ${PASS} passou, ${FAIL} falhou, ${SKIP} pulados"
+  echo "⊘ testes online pulados (sem META_ACCESS_TOKEN/AD_ACCOUNT_ID/PAGE_ID)"
+  [[ "$FAIL" -eq 0 ]]
+  exit $?
+fi
 
 # ── cleanup de objetos criados ────────────────────────────────────────────────
 CREATED_ADSETS=()

@@ -57,7 +57,7 @@ def _build_url(api_base: str, path: str, token: str, fields: str) -> str:
 def _fetch_json(url: str) -> dict:
     try:
         with urllib.request.urlopen(url, timeout=API_TIMEOUT) as r:
-            return json.loads(r.read())
+            raw = r.read()
     except urllib.error.HTTPError as e:
         # Lê body pra contexto, mas redact token
         body = ""
@@ -71,6 +71,16 @@ def _fetch_json(url: str) -> dict:
         ) from None
     except urllib.error.URLError as e:
         raise RuntimeError(f"URLError: {e.reason}") from None
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        # Defensive: Graph API sempre retorna JSON, mas se parser do urllib
+        # trouxer lixo (proxy interceptor, middlebox), o traceback não pode
+        # vazar a URL com token raw.
+        raise RuntimeError(
+            f"JSON decode em {_redact_token(url)}: {e}"
+        ) from None
 
 
 def _redact_token(url: str) -> str:
