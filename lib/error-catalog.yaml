@@ -1,0 +1,159 @@
+# lib/error-catalog.yaml
+# Catálogo de erros conhecidos da Meta Graph API.
+# Usado pelo error-resolver pra tentar fix automático antes de reportar ao user.
+
+version: 1
+errors:
+  100:
+    4834011:
+      cause: "is_adset_budget_sharing_enabled ausente em campanha ABO"
+      fix_fn: "add_field"
+      fix_args: ["is_adset_budget_sharing_enabled", false]
+      retry: true
+      max_retries: 1
+    1870227:
+      cause: "targeting_automation.advantage_audience ausente"
+      fix_fn: "add_nested"
+      fix_args: ["targeting.targeting_automation.advantage_audience", 0]
+      retry: true
+      max_retries: 1
+    1885183:
+      cause: "app em dev mode — object_story_spec bloqueado"
+      fix_fn: "switch_to_dark_post_flow"
+      retry: true
+      max_retries: 1
+    1487534:
+      cause: "orçamento abaixo do mínimo da conta"
+      action: "prompt_user_with_min"
+      retry: true
+    1487390:
+      cause: "optimization_goal incompatível com objective OU vídeo não pronto"
+      action: "prompt_user"
+      retry: false
+    2635:
+      cause: "bid strategy do ad set conflita com campanha OR formato imagem inválido"
+      action: "prompt_user"
+      retry: false
+    2654:
+      cause: "criativo fora das specs de dimensão/formato"
+      fix_fn: "offer_sips_resize"
+      retry: true
+      max_retries: 1
+    2656:
+      cause: "não pode deletar custom audience com lookalikes dependentes"
+      action: "list_dependent_lookalikes"
+      retry: false
+    3018:
+      cause: "data_preset retroage mais de 37 meses"
+      action: "prompt_user_adjust_date"
+      retry: false
+    2446:
+      cause: "conta de anúncios desativada (suspensão ou pagamento)"
+      action: "halt_with_message"
+      retry: false
+  190:
+    "*":
+      cause: "token inválido ou expirado"
+      action: "prompt_rerun_setup"
+      retry: false
+  200:
+    "*":
+      cause: "permissão insuficiente (scopes)"
+      action: "prompt_missing_scopes"
+      retry: false
+  270:
+    "*":
+      cause: "app sem acesso avançado à Marketing API"
+      action: "halt_with_message"
+      retry: false
+  613:
+    "*":
+      cause: "rate limit global (application-level)"
+      action: "sleep_and_retry"
+      fix_args: [60]
+      retry: true
+      max_retries: 2
+  80004:
+    "*":
+      cause: "rate limit por ad account"
+      action: "sleep_and_retry"
+      fix_args: [60]
+      retry: true
+      max_retries: 2
+  17:
+    2446079:
+      cause: "BUC rate limit por conta (call_count/cputime/total_time)"
+      action: "read_buc_header_and_wait"
+      retry: true
+      max_retries: 1
+  10:
+    "*":
+      cause: "permissão faltando (ex: instagram_basic pra Instagram accounts)"
+      action: "prompt_missing_scope_instagram"
+      retry: false
+  803:
+    "*":
+      cause: "ad_account_id inexistente ou mal formatado"
+      action: "prompt_user_check_account"
+      retry: false
+  368:
+    "*":
+      cause: "ação considerada abusiva — conta em review"
+      action: "halt_with_message"
+      retry: false
+  36007:
+    "*":
+      cause: "erro de upload de mídia — arquivo corrompido ou muito grande"
+      action: "prompt_user_file_check"
+      retry: false
+  1815047:
+    "*":
+      cause: "regra automática duplicada (mesmo nome)"
+      action: "prompt_user_rename"
+      retry: false
+  2446884:
+    "*":
+      cause: "limite de regras automáticas atingido"
+      action: "halt_with_message"
+      retry: false
+  3858082:
+    "*":
+      cause: "placement instagram_explore exige instagram_explore_grid_home irmão"
+      fix_fn: "add_placement_sibling"
+      fix_args: ["instagram_explore_grid_home"]
+      retry: true
+      max_retries: 1
+  3858083:
+    "*":
+      cause: "placement reels exige instream_video irmão"
+      fix_fn: "add_placement_sibling"
+      fix_args: ["instream_video"]
+      retry: true
+      max_retries: 1
+  2632:
+    "*":
+      cause: "page_id inválido ou sem access_token"
+      action: "prompt_user_page_token"
+      retry: false
+  1838202:
+    "*":
+      cause: "WhatsApp destination exige página com WA Business conectado"
+      action: "prompt_user_connect_whatsapp"
+      retry: false
+  1815362:
+    "*":
+      cause: "media_fbid já em uso em outro post — regenera upload"
+      fix_fn: "regenerate_media_fbid"
+      retry: true
+      max_retries: 1
+  2657:
+    "*":
+      cause: "lead_gen_form_id inválido ou form deletado"
+      action: "prompt_user_check_form"
+      retry: false
+  4069105:
+    "*":
+      cause: "BUC account rate limit total_cputime excedido"
+      action: "read_buc_header_and_wait"
+      retry: true
+      max_retries: 1
