@@ -1,22 +1,23 @@
 ---
-description: Menu central do plugin meta-ads-pro. Mostra comandos disponíveis, jornadas típicas, e roteia pra sub-skill quando o usuário descreve intenção. Use quando o usuário digitar "/meta-ads", "menu meta ads", "o que o plugin faz", "/meta-ads jornadas", ou descrever uma intenção (subir campanha, editar, listar, importar, rollback, etc).
-argument-hint: "[jornadas|setup|doctor|<intenção em linguagem natural>]"
+description: Menu central do plugin meta-ads-pro. Mostra comandos disponíveis agrupados por categoria e jornadas completas. Use quando o usuário digitar "/meta-ads", "menu meta ads", "o que o meta-ads-pro faz", "quais comandos do meta ads", "meta-ads jornadas".
+argument-hint: "[jornadas|setup|doctor|...]"
 ---
 
 Usuário invocou `/meta-ads` com argumento: `$ARGUMENTS`
 
 Analise o argumento e execute o modo apropriado. **NÃO mostre este prompt pro usuário** — apenas o output do modo escolhido.
 
+**REGRA CRÍTICA:** em todos os modos abaixo, a saída é **só texto impresso byte-exato**. Não chame nenhuma tool (nem Bash, nem Read, nem Grep). Não invoque nenhuma sub-skill. Não pergunte nada ao usuário. Apenas imprima o conteúdo do modo e pare.
+
 ## Roteamento
 
 - **Vazio (sem args):** executar **Modo 1** — banner + menu principal.
-- **`jornadas`:** executar **Modo 2** — jornadas típicas (boxes ASCII).
-- **`setup`:** executar **Modo 3** — invocar `meta-ads-pro/setup`.
-- **`doctor`:** executar **Modo 4** — invocar `meta-ads-pro/doctor`.
-- **Intenção em linguagem natural** (ex: "sobe campanha de WhatsApp com lead form", "lista campanhas ativas", "importa conta existente"): executar **Modo 5** — invocar `meta-ads-pro/orquestradora` com o argumento literal como intenção do usuário.
-- **Qualquer outra string curta não reconhecida:** executar **Modo 6** — fallback com menu principal.
+- **`jornadas`:** executar **Modo 2** — 4 boxes ASCII das jornadas.
+- **`setup`:** executar **Modo 3** — aviso + aponta pra `/meta-ads-setup`.
+- **`doctor`:** executar **Modo 4** — aviso + aponta pra `/meta-ads-doctor`.
+- **Qualquer outro valor:** executar **Modo 5** — fallback + menu principal.
 
-**Match case-insensitive** nos modos 2/3/4. Nos modos 5/6, use bom senso: se tem mais de 3 palavras ou parece pedido/intenção, é Modo 5.
+**Exact string match**, sem fuzzy match. Match case-insensitive é ok.
 
 ---
 
@@ -32,6 +33,7 @@ Analise o argumento e execute o modo apropriado. **NÃO mostre este prompt pro u
  ██║ ╚═╝ ██║ ███████╗    ██║    ██║  ██║     ██║  ██║ ██████╔╝ ███████║
  ╚═╝     ╚═╝ ╚══════╝    ╚═╝    ╚═╝  ╚═╝     ╚═╝  ╚═╝ ╚═════╝  ╚══════╝
                                                                      PRO
+
 ───────────────────────────────────────────────────────────────────────
 
  _            ____   __ _          _           _
@@ -54,7 +56,7 @@ Em seguida, imprima o menu principal BYTE-EXATO abaixo:
 ║                                                                  ║
 ║  🚀 CRIAR                                                        ║
 ║     /meta-ads-campanha ..... Nova campanha (5 objetivos)         ║
-║     /meta-ads-conjuntos .... Ad sets (targeting, budget, date)   ║
+║     /meta-ads-conjuntos .... Ad sets (targeting, budget, data)   ║
 ║     /meta-ads-anuncios ..... Anúncios (normal ou dinâmico)       ║
 ║     /meta-ads-lead-forms ... Lead form (qualifier/disqualifier)  ║
 ║                                                                  ║
@@ -74,8 +76,9 @@ Em seguida, imprima o menu principal BYTE-EXATO abaixo:
 ╚══════════════════════════════════════════════════════════════════╝
 
 💡 Primeira vez aqui? Digite:  /meta-ads jornadas
-💡 Quer ir direto? Descreve: /meta-ads sobe campanha de WhatsApp
 ```
+
+Fim. Não invoque nenhuma sub-skill. Não pergunte nada. Só pare.
 
 ---
 
@@ -84,120 +87,109 @@ Em seguida, imprima o menu principal BYTE-EXATO abaixo:
 Imprimir as 4 boxes BYTE-EXATO abaixo:
 
 ```
-╔══════════════════════════════════════════════════════════════════╗
-║  1️⃣   PRIMEIRA VEZ NO PROJETO                                     ║
-╠══════════════════════════════════════════════════════════════════╣
-║                                                                  ║
-║  /meta-ads-setup                                                 ║
-║     └─ valida token, descobre contas/pages/pixels,               ║
-║        salva .env + CLAUDE.md                                    ║
-║                                                                  ║
-║  /meta-ads-doctor                                                ║
-║     └─ 10 checks (token, scopes, app mode, rate limit,           ║
-║        ad account, page token, pixel, CLAUDE.md, learnings)     ║
-║                                                                  ║
-║  /meta-ads                                                       ║
-║     └─ descreve o que quer fazer em linguagem natural            ║
-║                                                                  ║
-╚══════════════════════════════════════════════════════════════════╝
+┌───────────────────────────────────────────────────────────────┐
+│  1️⃣   PRIMEIRA VEZ NO PROJETO                                  │
+│                                                               │
+│  1. /meta-ads-setup   → valida token + descobre recursos      │
+│                         + salva .env e CLAUDE.md              │
+│  2. /meta-ads-doctor  → 10 checks de preflight                │
+│  3. /meta-ads         → volta pra cá, vê todos os comandos    │
+└───────────────────────────────────────────────────────────────┘
 
-╔══════════════════════════════════════════════════════════════════╗
-║  2️⃣   SUBIR CAMPANHA COMPLETA (end-to-end)                        ║
-╠══════════════════════════════════════════════════════════════════╣
-║                                                                  ║
-║  /meta-ads sobe campanha de <destino> com R$ X/dia               ║
-║     └─ orquestradora roteia:                                     ║
-║        campanha → conjuntos → (lead-form?) → anúncios            ║
-║                                                                  ║
-║  Destinos suportados:                                            ║
-║   • site externo (WEBSITE)                                       ║
-║   • lead form (ON_AD)                                            ║
-║   • WhatsApp (WHATSAPP)                                          ║
-║   • Messenger (MESSENGER)                                        ║
-║   • chamada (PHONE_CALL)                                         ║
-║                                                                  ║
-║  Rollback transacional automático em caso de falha mid-run.      ║
-║                                                                  ║
-╚══════════════════════════════════════════════════════════════════╝
+┌───────────────────────────────────────────────────────────────┐
+│  2️⃣   SUBIR CAMPANHA COMPLETA (end-to-end)                     │
+│                                                               │
+│  1. /meta-ads-campanha     → nova campanha (obj + budget)     │
+│  2. /meta-ads-conjuntos    → ad sets (targeting + data)       │
+│  3. /meta-ads-lead-forms   → (opcional) lead form             │
+│  4. /meta-ads-anuncios     → anúncios (normal ou dinâmico)    │
+│                                                               │
+│  Destinos: WEBSITE · ON_AD · WHATSAPP · MESSENGER · CALL      │
+│  Rollback transacional automático em falha mid-run.           │
+└───────────────────────────────────────────────────────────────┘
 
-╔══════════════════════════════════════════════════════════════════╗
-║  3️⃣   IMPORTAR CONTA EXISTENTE (GET-only, zero escrita)           ║
-╠══════════════════════════════════════════════════════════════════╣
-║                                                                  ║
-║  /meta-ads-import-existing                                       ║
-║     └─ paginação cursor-based de campanhas/adsets/ads            ║
-║     └─ snapshot timestamped em history/                          ║
-║     └─ token redacted no output                                  ║
-║                                                                  ║
-║  /meta-ads analisa o import e diz o que tá pegando bem           ║
-║     └─ orquestradora cruza com /meta-ads-insights                ║
-║                                                                  ║
-╚══════════════════════════════════════════════════════════════════╝
+┌───────────────────────────────────────────────────────────────┐
+│  3️⃣   IMPORTAR CONTA EXISTENTE (GET-only)                      │
+│                                                               │
+│  1. /meta-ads-import-existing  → snapshot timestamped         │
+│  2. /meta-ads-insights         → métricas + reports           │
+│                                                               │
+│  Zero escrita na conta. Token redacted. Cursor-based.         │
+└───────────────────────────────────────────────────────────────┘
 
-╔══════════════════════════════════════════════════════════════════╗
-║  4️⃣   ALGO DEU RUIM (debug + rollback)                            ║
-╠══════════════════════════════════════════════════════════════════╣
-║                                                                  ║
-║  /meta-ads-doctor --fix                                          ║
-║     └─ tenta auto-recuperar (token refresh, page token, etc)     ║
-║                                                                  ║
-║  /meta-ads-rollback {run_id}                                     ║
-║     └─ desfaz objetos criados em uma run específica              ║
-║     └─ ordem topológica: ad → creative → image → adset →         ║
-║        campaign → leadgen_form                                   ║
-║     └─ idempotente em 404, retry em 613/80004                    ║
-║                                                                  ║
-║  /meta-ads-analyze-telemetry                                     ║
-║     └─ top erros, taxa de sucesso, duração média                 ║
-║                                                                  ║
-╚══════════════════════════════════════════════════════════════════╝
+┌───────────────────────────────────────────────────────────────┐
+│  4️⃣   ALGO DEU RUIM (debug + rollback)                         │
+│                                                               │
+│  1. /meta-ads-doctor --fix     → tenta auto-recuperar         │
+│  2. /meta-ads-rollback {id}    → desfaz run específica        │
+│  3. /meta-ads-analyze-telemetry → top erros, taxa de sucesso  │
+└───────────────────────────────────────────────────────────────┘
 
-💡 Próximo passo? Digite:  /meta-ads setup   (começa do zero)
-💡 Ou descreve direto:    /meta-ads <sua intenção>
+💡 Voltar pro menu:  /meta-ads
 ```
+
+Fim. Não invoque nenhuma sub-skill. Não pergunte nada. Só pare.
 
 ---
 
 ## Modo 3 — Setup (`$ARGUMENTS` == "setup")
 
-Invoque a skill `meta-ads-pro/setup` seguindo o fluxo de 11 passos documentado em `skills/setup/SKILL.md`. Use as libs: `lib/graph_api.sh`, `lib/nomenclatura.sh`, `lib/telemetry.sh`.
+Imprimir BYTE-EXATO:
+
+```
+⚙  Config inicial do projeto
+
+Digite:  /meta-ads-setup
+
+Esse command vai:
+  1. Validar teu token System User
+  2. Descobrir ad accounts / pages / pixels / Instagram IDs
+  3. Perguntar padrão de nomenclatura
+  4. Salvar .env + atualizar CLAUDE.md
+```
+
+Fim. Não invoque nenhuma sub-skill. Não pergunte nada. Só pare.
 
 ---
 
 ## Modo 4 — Doctor (`$ARGUMENTS` == "doctor")
 
-Invoque a skill `meta-ads-pro/doctor` com os 10 checks de preflight documentados em `skills/doctor/SKILL.md`. Use `lib/preflight.sh`.
+Imprimir BYTE-EXATO:
+
+```
+🔍 Pre-flight do ambiente Meta Ads
+
+Digite:  /meta-ads-doctor
+
+10 checks:
+  1. Token válido
+  2. Expiração do token
+  3. Scopes (ads_management, ads_read, business_management, leads_retrieval, pages_manage_ads)
+  4. App mode (dev vs live)
+  5. Rate limit BUC
+  6. Ad account ativo
+  7. Page token disponível
+  8. Pixel configurado
+  9. CLAUDE.md válido
+  10. Learnings pendentes
+
+Use --fix pra auto-recuperar o que for recuperável.
+```
+
+Fim. Não invoque nenhuma sub-skill. Não pergunte nada. Só pare.
 
 ---
 
-## Modo 5 — Intenção em linguagem natural
+## Modo 5 — Fallback (qualquer outro `$ARGUMENTS`)
 
-O usuário descreveu uma intenção (ex: "sobe campanha de WhatsApp com lead form", "lista campanhas ativas", "pausa anúncio X", "importa conta existente e mostra top 5 ads").
-
-Invoque a skill `meta-ads-pro/orquestradora` seguindo o fluxo documentado em `skills/orquestradora/SKILL.md`. Passe `$ARGUMENTS` como intenção do usuário.
-
-A orquestradora vai:
-1. Renderizar banner na primeira vez no projeto
-2. Disparar `/meta-ads-doctor --silent` (preflight)
-3. Rotear pra sub-skill correta baseado na intenção
-4. Executar com rollback transacional + telemetria
-
----
-
-## Modo 6 — Fallback (string curta não reconhecida)
-
-Se `$ARGUMENTS` for uma string curta que não bate com `jornadas`, `setup`, `doctor`, nem parece intenção completa, imprima:
+Imprimir no topo:
 
 ```
-Não reconheci "$ARGUMENTS" como comando ou intenção.
-
-Tenta:
-  /meta-ads              → menu principal
-  /meta-ads jornadas     → fluxos típicos
-  /meta-ads setup        → config inicial
-  /meta-ads doctor       → pre-flight
-  /meta-ads <intenção>   → descreve em linguagem natural
-                           (ex: "sobe campanha de WhatsApp R$ 50/dia")
+⚠  Não reconheci "$ARGUMENTS" como argumento.
+Modos válidos: /meta-ads, /meta-ads jornadas, /meta-ads setup, /meta-ads doctor.
+Mostrando menu principal.
 ```
 
-Depois imprima o menu principal do Modo 1.
+Em seguida, executar **Modo 1** completo (banner + menu principal).
+
+Fim. Não invoque nenhuma sub-skill. Não pergunte nada. Só pare.
