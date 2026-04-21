@@ -14,7 +14,10 @@ echo "→ shellcheck"
 if ! command -v shellcheck &>/dev/null; then
   _skip "shellcheck não instalado"
 else
-  mapfile -t sh_files < <(find "$PLUGIN_ROOT/lib" -name "*.sh" -type f | sort)
+  sh_files=()
+  while IFS= read -r f; do
+    sh_files+=("$f")
+  done < <(find "$PLUGIN_ROOT/lib" -name "*.sh" -type f | sort)
   if (( ${#sh_files[@]} == 0 )); then
     _skip "shellcheck: nenhum .sh encontrado em lib/"
   else
