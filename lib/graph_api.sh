@@ -23,6 +23,17 @@ graph_api() {
   # Guard: body vazio vira objeto vazio pra jq não quebrar
   [[ -z "$body" ]] && body='{}'
 
+  # DRY RUN interception — intercepta POST/DELETE, não GET.
+  # Usuário seta META_ADS_DRY_RUN=1 → zero chamadas reais à Meta, manifest JSONL só.
+  if [[ "${META_ADS_DRY_RUN:-0}" == "1" ]] && [[ "$method" != "GET" ]]; then
+    local ghost_id
+    ghost_id="DRY_RUN_$(date +%s)_$$_$RANDOM"
+    python3 "$(dirname "${BASH_SOURCE[0]}")/_py/dry_run_manifest.py" \
+      --method "$method" --path "$path" --body "$body" --ghost-id "$ghost_id" 2>/dev/null || true
+    echo "{\"id\":\"$ghost_id\",\"dry_run\":true}"
+    return 0
+  fi
+
   while (( attempt <= MAX_RETRIES )); do
     if [[ "$method" == "GET" ]]; then
       # separador correto entre query existente e access_token
@@ -75,7 +86,33 @@ graph_api() {
     if [[ -f "$resolver_sh" ]] && [[ "${GRAPH_API_SKIP_RESOLVER:-0}" != "1" ]]; then
       # shellcheck source=/dev/null
       source "$resolver_sh"
-      resolve_error "$err_code" "$err_subcode" "$response" "$method" "$path" "$body" && return 0
+      local resolve_rc=0
+      RESOLVER_FIX=""  # reset antes de cada chamada
+      resolve_error "$err_code" "$err_subcode" "$response" "$method" "$path" "$body" || resolve_rc=$?
+
+      if (( resolve_rc == 0 )); then
+        return 0
+      fi
+
+      # rc=2 = resolver pediu retry. Se RESOLVER_FIX setado, aplica ao body e
+      # re-POSTa uma vez (com resolver desabilitado, previne loop infinito).
+      if (( resolve_rc == 2 )); then
+        if [[ -n "${RESOLVER_FIX:-}" ]] && [[ "$method" == "POST" ]]; then
+          local new_body
+          if new_body=$(apply_fix_to_body "$body" "$RESOLVER_FIX" 2>/dev/null) && [[ -n "$new_body" ]]; then
+            echo "⚙ graph_api: re-POST com fix '$RESOLVER_FIX' aplicado" >&2
+            GRAPH_API_SKIP_RESOLVER=1 graph_api POST "$path" "$new_body"
+            return $?
+          fi
+          echo "✗ graph_api: apply_fix_to_body falhou pra '$RESOLVER_FIX'" >&2
+        else
+          # sleep_and_retry e afins: o resolver já dormiu, só continuar o loop
+          (( attempt++ )) || true
+          if (( attempt <= MAX_RETRIES )); then
+            continue
+          fi
+        fi
+      fi
     fi
 
     # falhou: ecoa response e retorna erro

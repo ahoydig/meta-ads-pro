@@ -64,8 +64,12 @@ resolve_error() {
 
   case "$fn" in
     add_field|add_nested)
-      # aplicação do fix exige re-POST modificando body — delega ao caller via flag
+      # aplicação do fix exige re-POST modificando body — exporta FIX pro caller
+      # aplicar via apply_fix_to_body() e retentar uma vez.
       echo "FIX:$fix" >&2
+      # shellcheck disable=SC2034  # RESOLVER_FIX é lida pelo graph_api.sh (caller)
+      RESOLVER_FIX="$fix"
+      export RESOLVER_FIX
       return 2  # código especial: caller deve aplicar e retentar
       ;;
     sleep_and_retry)
@@ -79,15 +83,160 @@ resolve_error() {
       echo "USER_ACTION:$fn" >&2
       return 1
       ;;
-    read_buc_header_and_wait|switch_to_dark_post_flow|offer_sips_resize|add_placement_sibling|regenerate_media_fbid)
-      # implementação em CP2
-      echo "TODO_CP2:$fn" >&2
+    switch_to_dark_post_flow)
+      # Fix bug #3: Graph API rejeita object_story_spec quando app em dev mode.
+      # Re-escreve body com object_story_id apontando pra dark post recém-criado.
+      # Caller re-executa POST com o novo body via RESOLVER_NEW_BODY.
+      local new_body
+      new_body=$(switch_to_dark_post_flow "${_body:-}") || {
+        echo "switch_to_dark_post_flow: falhou" >&2
+        return 1
+      }
+      export RESOLVER_NEW_BODY="$new_body"
+      echo "FIX:switch_to_dark_post_flow" >&2
+      return 2
+      ;;
+    read_buc_header_and_wait|offer_sips_resize|add_placement_sibling|regenerate_media_fbid)
+      # implementação em CPs posteriores
+      echo "TODO_CP_FUTURE:$fn" >&2
       return 1
       ;;
     *)
       return 1
       ;;
   esac
+}
+
+# Aplica fix ao body JSON e ecoa o novo body.
+# fix formato: "add_field:<key>:<value>"  ou  "add_nested:<dot.path>:<value>"
+# value é interpretado como JSON se bool/numérico/null, senão como string.
+# Usage: new_body=$(apply_fix_to_body "$body" "$fix")
+apply_fix_to_body() {
+  local body="$1" fix="$2"
+  [[ -z "$fix" ]] && { echo "$body"; return 1; }
+  [[ -z "$body" ]] && body='{}'
+
+  local fn rest key value
+  fn="${fix%%:*}"
+  rest="${fix#*:}"
+  key="${rest%%:*}"
+  value="${rest#*:}"
+
+  local is_json=0
+  if [[ "$value" == "true" || "$value" == "false" || "$value" == "null" ]] \
+     || [[ "$value" =~ ^-?[0-9]+$ ]] \
+     || [[ "$value" =~ ^-?[0-9]+\.[0-9]+$ ]]; then
+    is_json=1
+  fi
+
+  case "$fn" in
+    add_field)
+      if (( is_json )); then
+        echo "$body" | jq -c --arg k "$key" --argjson v "$value" '. + {($k): $v}'
+      else
+        echo "$body" | jq -c --arg k "$key" --arg v "$value" '. + {($k): $v}'
+      fi
+      ;;
+    add_nested)
+      local path_json
+      path_json=$(printf '%s' "$key" | jq -Rc 'split(".")')
+      if (( is_json )); then
+        echo "$body" | jq -c --argjson p "$path_json" --argjson v "$value" 'setpath($p; $v)'
+      else
+        echo "$body" | jq -c --argjson p "$path_json" --arg v "$value" 'setpath($p; $v)'
+      fi
+      ;;
+    *)
+      echo "$body"
+      return 1
+      ;;
+  esac
+}
+
+# ─── switch_to_dark_post_flow ─────────────────────────────────────────────────
+# Fix bug #3: app em dev mode → Graph rejeita object_story_spec.
+# Workaround: criar dark post (feed published=false) usando page access token,
+# depois re-POST o creative com object_story_id em vez de object_story_spec.
+#
+# Input:  $1 = body JSON original que falhou (tem object_story_spec)
+# Output: novo body JSON (object_story_id + call_to_action preservado)
+#
+# Requer: PAGE_ACCESS_TOKEN no env.
+# Dependências: upload_dark_post (lib/upload_media.sh) quando há image_hash
+# fresh; aqui refazemos com message+link (sem reusar image_hash).
+switch_to_dark_post_flow() {
+  local original_body="$1"
+  [[ -n "$original_body" ]] || {
+    echo "switch_to_dark_post_flow: body vazio" >&2
+    return 1
+  }
+
+  local page_id caption link cta_json image_hash
+  page_id=$(echo "$original_body"    | jq -r '.object_story_spec.page_id // empty')
+  caption=$(echo "$original_body"    | jq -r '.object_story_spec.link_data.message // .object_story_spec.video_data.message // empty')
+  link=$(echo "$original_body"       | jq -r '.object_story_spec.link_data.link // empty')
+  cta_json=$(echo "$original_body"   | jq -c '.object_story_spec.link_data.call_to_action // .object_story_spec.video_data.call_to_action // null')
+  image_hash=$(echo "$original_body" | jq -r '.object_story_spec.link_data.image_hash // empty')
+
+  [[ -n "$page_id" ]] || {
+    echo "switch_to_dark_post_flow: page_id ausente no object_story_spec" >&2
+    return 1
+  }
+
+  local page_token="${PAGE_ACCESS_TOKEN:-}"
+  if [[ -z "$page_token" ]]; then
+    # tenta buscar via token do usuário
+    local user_token="${META_ACCESS_TOKEN:-}"
+    [[ -n "$user_token" ]] || {
+      echo "switch_to_dark_post_flow: PAGE_ACCESS_TOKEN nem META_ACCESS_TOKEN disponíveis" >&2
+      return 1
+    }
+    local api_ver="${META_API_VERSION:-v25.0}"
+    page_token=$(curl -sS \
+      "https://graph.facebook.com/${api_ver}/${page_id}?fields=access_token&access_token=${user_token}" \
+      | jq -r '.access_token // empty')
+    [[ -n "$page_token" ]] || {
+      echo "switch_to_dark_post_flow: page token indisponível (pages_manage_posts/pages_read_engagement scope?)" >&2
+      return 1
+    }
+  fi
+
+  local api_ver="${META_API_VERSION:-v25.0}"
+
+  # Cria dark post via /{page_id}/feed published=false
+  local curl_args=(-sS -X POST "https://graph.facebook.com/${api_ver}/${page_id}/feed"
+    -F "message=${caption}"
+    -F "published=false"
+    -F "access_token=${page_token}")
+  [[ -n "$link" ]] && curl_args+=(-F "link=${link}")
+
+  # Se tem image_hash, reaproveita via attached_media (foto já na biblioteca)
+  # Nota: bug #5 diz "nunca reusar media_fbid entre posts" — aqui é o MESMO
+  # run que falhou, então criar UM novo post e abandonar o antigo é seguro.
+  if [[ -n "$image_hash" ]]; then
+    curl_args+=(-F "image_hash=${image_hash}")
+  fi
+
+  local post_response post_id
+  post_response=$(curl "${curl_args[@]}")
+  post_id=$(echo "$post_response" | jq -r '.id // empty')
+  [[ -n "$post_id" ]] || {
+    echo "switch_to_dark_post_flow: falhou ao criar dark post — $post_response" >&2
+    return 1
+  }
+
+  # Registra no manifest pra rollback (se manifest_add disponível)
+  if command -v manifest_add >/dev/null 2>&1; then
+    manifest_add "dark_post" "$post_id" 2>/dev/null || true
+  fi
+
+  # Constrói novo body: object_story_id + call_to_action preservado
+  if [[ "$cta_json" == "null" || -z "$cta_json" ]]; then
+    jq -n --arg pid "$post_id" '{object_story_id: $pid}'
+  else
+    jq -n --arg pid "$post_id" --argjson cta "$cta_json" \
+      '{object_story_id: $pid, call_to_action: $cta}'
+  fi
 }
 
 log_unknown_error() {

@@ -29,15 +29,15 @@ gen_name() {
           # {prefix}_{YYYYMMDD}_{produto}_{objetivo}_{destino}_{opt}_{publico}
           local prefix="${NOMENCLATURA_PREFIX:-ahoy}"
           apply_template "${prefix}_${today}_{produto}_{objetivo}_{destino}_{opt}_{publico}" "$@" \
-            | sed 's/_[{][a-zA-Z]*[}]//g'
+            | sed 's/_[{][a-zA-Z][a-zA-Z-]*[}]//g'
           ;;
         adset)
           apply_template "{tipopublico}_{nomeaudiencia}_auto_{idade}_{genero}_{regiao}" "$@" \
-            | sed 's/_[{][a-zA-Z]*[}]//g'
+            | sed 's/_[{][a-zA-Z][a-zA-Z-]*[}]//g'
           ;;
         ad)
           apply_template "{formato}_{nome-criativo}_{avatar}_{tipo}_{cta}_v{N}" "$@" \
-            | sed 's/_[{][a-zA-Z]*[}]//g'
+            | sed 's/_[{][a-zA-Z][a-zA-Z-]*[}]//g'
           ;;
         *)
           echo "gen_name: level inválido '$level'" >&2
