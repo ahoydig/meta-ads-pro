@@ -5,6 +5,39 @@ versionamento [SemVer](https://semver.org/).
 
 ---
 
+## [v1.0.1] — 2026-04-21
+
+Hotfix release — 7 bugs descobertos no smoke live REAL v1.0.0 em produção.
+Apply-retry do bug #1 VALIDADO em produção (erro 100/4834011 → fix auto → campanha criada).
+
+### Fixed
+
+- **preflight standalone `BASH_SOURCE[0]` unset em bash 3.2** — fallback `${BASH_SOURCE[0]:-$0}`
+  pra cobrir shell interativo com `set -u`. Commit `f57afee`.
+- **`local status` colide com bash readonly var** — rename `acct_status` em `check_ad_account_active`.
+  Commit `f57afee`.
+- **`thank_you_page[button_type]` required pela Meta Graph API** — smoke-live adiciona
+  `VIEW_WEBSITE + button_text + website_url` em thank you qualified + disqualified.
+  Commit `5f95759`.
+- **`context_card[style]` required** — smoke-live adiciona `LIST_STYLE + button_text`.
+  Commit `faa45f1`.
+- **Lead forms não suportam DELETE direto via API** — `rollback_run` detecta type=leadgen_form
+  e usa `POST status=ARCHIVED` via page access token. Commit `b698996`.
+- **Form name colide com ARCHIVED anteriores** — smoke-live gera `_SMOKE_form_YYYYMMDD_HHMMSS`.
+  Commit `57e2ec7`.
+- **Rollback com manifest vazio** — guard no início de `rollback_run` + skip linhas vazias
+  na iteração. Commit `57e2ec7`.
+
+### Validated in production
+
+- Apply-retry loop (bug #1) executado end-to-end contra Meta real. Erro 100/4834011
+  detectado, fix `add_field:is_adset_budget_sharing_enabled:false` aplicado, re-POST
+  com sucesso. Campanha `120249218303640196` criada.
+- Rollback topológico ad set → campaign → (form archived) funcional.
+- Budget control inviolável: R$ 0,00 gasto em ~3min ativo (sem ad criado).
+
+---
+
 ## [v1.0.0] — 2026-04-21
 
 Release inicial pública. Plugin Claude Code completo pra gerenciamento de Meta Ads
