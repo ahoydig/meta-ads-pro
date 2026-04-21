@@ -561,6 +561,114 @@ test_import_existing_smoke() {
   fi
 }
 
+# ─── Task 3c.4.1: analyze_telemetry ────────────────────────────────────────
+test_analyze_telemetry_absent_file() {
+  local tmp_dir out
+  tmp_dir=$(mktemp -d)
+  out=$(python3 "$(dirname "$0")/../lib/_py/analyze_telemetry.py" \
+    --file "$tmp_dir/nope.jsonl" 2>&1)
+  rm -rf "$tmp_dir"
+  if [[ "$out" == *"Sem telemetria registrada"* ]]; then
+    _pass "test_analyze_telemetry_absent_file"
+  else
+    _fail "test_analyze_telemetry_absent_file" "got: $out"; exit 1
+  fi
+}
+
+test_analyze_telemetry_aggregates() {
+  local tmp_dir log out
+  tmp_dir=$(mktemp -d)
+  log="$tmp_dir/telemetry.jsonl"
+  cat > "$log" <<'JSONL'
+{"ts": "2099-01-01T10:00:00+00:00", "event": "error_encountered", "code": "100", "subcode": "2654"}
+{"ts": "2099-01-01T10:01:00+00:00", "event": "error_encountered", "code": "100", "subcode": "2654"}
+{"ts": "2099-01-01T10:02:00+00:00", "event": "run_completed", "sub_skill": "campanha", "duration_ms": "3000"}
+{"ts": "2099-01-01T10:03:00+00:00", "event": "run_failed", "sub_skill": "campanha", "duration_ms": "5000"}
+{"ts": "2099-01-01T10:04:00+00:00", "event": "run_completed", "sub_skill": "anuncios", "duration_ms": "1000"}
+JSONL
+  # janela enorme pra cobrir o futuro simulado
+  out=$(python3 "$(dirname "$0")/../lib/_py/analyze_telemetry.py" \
+    --days 999999 --file "$log" 2>&1)
+  rm -rf "$tmp_dir"
+  if [[ "$out" == *"100/2654: 2x"* && \
+        "$out" == *"Taxa sucesso: 2/3"* && \
+        "$out" == *"Duração média: 3.0s"* && \
+        "$out" == *"campanha: 2x"* ]]; then
+    _pass "test_analyze_telemetry_aggregates"
+  else
+    _fail "test_analyze_telemetry_aggregates" "got: $out"; exit 1
+  fi
+}
+
+test_analyze_telemetry_ignores_bad_lines() {
+  local tmp_dir log out
+  tmp_dir=$(mktemp -d)
+  log="$tmp_dir/telemetry.jsonl"
+  printf 'not json\n{"ts":"2099-01-01T10:00:00+00:00","event":"run_completed"}\n' > "$log"
+  if out=$(python3 "$(dirname "$0")/../lib/_py/analyze_telemetry.py" \
+      --days 999999 --file "$log" 2>&1); then
+    rm -rf "$tmp_dir"
+    if [[ "$out" == *"1 eventos"* ]]; then
+      _pass "test_analyze_telemetry_ignores_bad_lines"
+    else
+      _fail "test_analyze_telemetry_ignores_bad_lines" "got: $out"; exit 1
+    fi
+  else
+    rm -rf "$tmp_dir"
+    _fail "test_analyze_telemetry_ignores_bad_lines" "exited non-zero"; exit 1
+  fi
+}
+
+# ─── leads_to_csv ──────────────────────────────────────────────────────────
+test_leads_to_csv_basic() {
+  local tmp_dir json_in csv_out
+  tmp_dir=$(mktemp -d)
+  json_in="$tmp_dir/leads.json"
+  csv_out="$tmp_dir/leads.csv"
+  cat > "$json_in" <<'JSON'
+{"data":[
+  {"id":"L1","created_time":"2026-04-20T15:30:00+0000",
+   "field_data":[{"name":"email","values":["a@x.com"]},{"name":"full_name","values":["João"]}]},
+  {"id":"L2","created_time":"2026-04-20T16:00:00+0000",
+   "field_data":[{"name":"email","values":["b@x.com"]},{"name":"interesses","values":["IA","auto"]}]}
+]}
+JSON
+  python3 "$(dirname "$0")/../lib/_py/leads_to_csv.py" \
+    --input "$json_in" --output "$csv_out" 2>/dev/null
+  local header row2
+  header=$(head -n1 "$csv_out")
+  row2=$(sed -n '3p' "$csv_out")
+  rm -rf "$tmp_dir"
+  if [[ "$header" == "id,created_time,email,full_name,interesses" && \
+        "$row2" == *"IA | auto"* ]]; then
+    _pass "test_leads_to_csv_basic"
+  else
+    _fail "test_leads_to_csv_basic" "header=$header row2=$row2"; exit 1
+  fi
+}
+
+test_leads_to_csv_invalid_json() {
+  local rc
+  rc=0
+  echo "not json" | python3 "$(dirname "$0")/../lib/_py/leads_to_csv.py" 2>/dev/null || rc=$?
+  if [[ "$rc" -eq 1 ]]; then
+    _pass "test_leads_to_csv_invalid_json"
+  else
+    _fail "test_leads_to_csv_invalid_json" "expected exit 1, got $rc"; exit 1
+  fi
+}
+
+test_leads_to_csv_stdin_stdout() {
+  local out
+  out=$(printf '[{"id":"X","created_time":"t","field_data":[{"name":"email","values":["x@y"]}]}]' \
+    | python3 "$(dirname "$0")/../lib/_py/leads_to_csv.py" 2>/dev/null)
+  if [[ "$out" == *"id,created_time,email"* && "$out" == *"X,t,x@y"* ]]; then
+    _pass "test_leads_to_csv_stdin_stdout"
+  else
+    _fail "test_leads_to_csv_stdin_stdout" "got: $out"; exit 1
+  fi
+}
+
 # ─── runner ────────────────────────────────────────────────────────────────
 test_graph_api_get_me
 test_error_catalog_parse
@@ -598,6 +706,12 @@ test_graph_api_dry_run_intercepts_post
 test_dry_run_manifest_body_string
 test_import_existing_usage
 test_import_existing_smoke
+test_analyze_telemetry_absent_file
+test_analyze_telemetry_aggregates
+test_analyze_telemetry_ignores_bad_lines
+test_leads_to_csv_basic
+test_leads_to_csv_invalid_json
+test_leads_to_csv_stdin_stdout
 
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped"

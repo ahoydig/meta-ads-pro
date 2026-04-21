@@ -156,7 +156,11 @@ def main() -> int:
         print("Sem telemetria registrada.")
         return 0
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=args.days)
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=args.days)
+    except OverflowError:
+        # --days excedeu o range do datetime; aceita qualquer coisa no log
+        cutoff = datetime.min.replace(tzinfo=timezone.utc)
     events = load_events(path, cutoff)
     sys.stdout.write(render_report(events, args.days))
     return 0
