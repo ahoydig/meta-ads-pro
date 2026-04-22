@@ -5,6 +5,32 @@ versionamento [SemVer](https://semver.org/).
 
 ---
 
+## [v1.0.5] — 2026-04-21
+
+Feature aditiva — ponte com o plugin `dna-operacional`.
+
+### Added
+
+- **`/meta-ads-dna`** — ponte pro plugin `dna-operacional`. Faz detecção em
+  dois níveis:
+  1. Plugin instalado? (`~/.claude/plugins/cache/*/dna-operacional/`)
+  2. DNA configurado no projeto atual? (`reference/publico-alvo.md` +
+     `reference/voz-*.md`)
+  Quatro estados possíveis — plugin ausente, plugin instalado mas projeto
+  não configurado, setup parcial, tudo certo — cada um com instruções
+  específicas. Se tudo certo, mostra mapa de integrações (roteiro-viral →
+  ad copy, raio-x-ads-concorrentes → briefing, carrossel-instagram →
+  asset_feed_spec, insights ↔ analista-conteudo).
+- Seção 🔗 INTEGRAÇÕES no `/meta-ads-menu`.
+
+### Notes
+
+- Change puramente aditivo. Não toca em nenhum fluxo existente.
+- Bridge bidirecional: dna-operacional v0.1.1+ expõe `/dna-meta-ads` que
+  faz a detecção inversa.
+
+---
+
 ## [v1.0.4] — 2026-04-21
 
 Hotfix release — elimina namespace forçado no slash command.
