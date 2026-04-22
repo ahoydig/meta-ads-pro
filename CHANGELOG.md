@@ -5,6 +5,20 @@ versionamento [SemVer](https://semver.org/).
 
 ---
 
+## [v1.0.6] — 2026-04-21
+
+Hotfix — detecção cross-plugin robusta.
+
+### Fixed
+
+- **`/meta-ads-dna` detection quebrada em cache-only** — o glob do
+  `~/.claude/plugins/cache/*/dna-operacional/.claude-plugin/plugin.json`
+  não batia no layout real `<marketplace>/<plugin>/<version>/.claude-plugin/`.
+  Passava por acaso via o fallback `marketplaces/`. Fix: cascata de 3
+  globs pra funcionar em qualquer configuração.
+
+---
+
 ## [v1.0.5] — 2026-04-21
 
 Feature aditiva — ponte com o plugin `dna-operacional`.

@@ -12,7 +12,8 @@ Execute os passos abaixo em ordem. **Não pergunte nada ao usuário.** **Não im
 Rode um único Bash silencioso:
 
 ```bash
-if ls ~/.claude/plugins/cache/*/dna-operacional/.claude-plugin/plugin.json >/dev/null 2>&1 \
+if ls ~/.claude/plugins/cache/*/dna-operacional/*/.claude-plugin/plugin.json >/dev/null 2>&1 \
+   || ls ~/.claude/plugins/cache/*/dna-operacional/.claude-plugin/plugin.json >/dev/null 2>&1 \
    || ls ~/.claude/plugins/marketplaces/*/plugins/dna-operacional/.claude-plugin/plugin.json >/dev/null 2>&1; then
   echo "INSTALLED"
 else
