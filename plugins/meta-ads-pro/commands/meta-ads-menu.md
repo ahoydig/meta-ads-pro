@@ -73,6 +73,9 @@ Em seguida, imprima o menu principal BYTE-EXATO abaixo:
 ║     /meta-ads-update ............. Puxa nova versão do plugin    ║
 ║     /meta-ads-analyze-telemetry .. Relatório local de uso        ║
 ║                                                                  ║
+║  🔗 INTEGRAÇÕES                                                  ║
+║     /meta-ads-dna ................ Ponte com dna-operacional     ║
+║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 💡 Primeira vez aqui? Rode `/meta-ads-menu jornadas` pra ver fluxos típicos.
