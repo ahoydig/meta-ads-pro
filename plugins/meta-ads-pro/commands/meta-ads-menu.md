@@ -47,7 +47,7 @@ Em seguida, imprima o menu principal BYTE-EXATO abaixo:
 
 ```
 ╔══════════════════════════════════════════════════════════════════╗
-║  🎯 Comandos disponíveis (v1.0.4)                                ║
+║  🎯 Comandos disponíveis (v1.0.6)                                ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
 ║  ⚙  SETUP & SAÚDE                                                ║
