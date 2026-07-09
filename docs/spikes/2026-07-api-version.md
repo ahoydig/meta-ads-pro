@@ -314,4 +314,3 @@ leitura + criação guiada no Ads Manager" (não força a escrita). Teste de reg
 **PASSA** enquanto a API continuar rejeitando com esse erro exato e **FALHA** se a
 API um dia aceitar (ou rejeitar com um erro diferente), sinalizando a necessidade de
 reavaliar. Ver relatório completo em `.superpowers/sdd/task-18-report.md`.
->>>>>>> feat/v1.1-track-c
