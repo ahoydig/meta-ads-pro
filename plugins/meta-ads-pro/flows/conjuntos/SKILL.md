@@ -60,11 +60,7 @@ Mapeamento pro payload:
 Regras específicas por destino:
 
 - **LEAD_FORM (2):** aciona `/meta-ads-lead-forms` antes pra criar form (se ainda não existe) e retorna `form_id`. Armazena em `LAST_FORM_ID` — o ad vai referenciar depois.
-- **WHATSAPP (3):** valida ANTES do POST que a page tem WA Business conectado (evita erro 1838202):
-  ```bash
-  graph_api GET "${PAGE_ID}?fields=connected_whatsapp_business_account"
-  ```
-  Se vazio → bloqueia com msg: `✗ Page ${PAGE_ID} não tem WhatsApp Business conectado. Conecte em https://business.facebook.com/ antes de continuar.`
+- **WHATSAPP (3):** ⚠ **campo removido pela API na v25.0** — o guard antigo (`GET {PAGE_ID}?fields=connected_whatsapp_business_account`, pra evitar erro 1838202 antes do POST) não funciona mais: a Graph API retorna `(#100) Tried accessing nonexisting field (connected_whatsapp_business_account)` pra QUALQUER Page hoje (confirmado ao vivo, drift documentado no `task-22-report.md`). Não existe substituto de leitura equivalente conhecido. **Verificação manual obrigatória antes de criar este destino:** confirmar em `business.facebook.com` → Configurações da Empresa → Contas → WhatsApp que a Page tem uma conta de WhatsApp Business conectada. Se o POST falhar mesmo assim com erro de WhatsApp desconectado, tratar como erro normal do `error-resolver.sh` (sem preflight client-side pra esse caso).
 - **SITE (1) com OFFSITE_CONVERSIONS:** exige `PIXEL_ID` no CLAUDE.md + pergunta qual evento do pixel otimizar (`PURCHASE`, `LEAD`, `COMPLETE_REGISTRATION` etc.) → vai no `promoted_object.custom_event_type`.
 - **CALL (5):** pergunta número (E.164, ex: `+5581999999999`) — vai no `promoted_object.phone_number` (ou só no ad dependendo da placement).
 
@@ -504,7 +500,7 @@ graph_api GET "{id}?fields=status"
 
 - Sempre `status: PAUSED` ao criar.
 - **Sempre `targeting.targeting_automation.advantage_audience: 0` (ou 1 se user pediu expansão)** — FIX BUG #2. Payload é passado por `jq ... //= 0` como segunda linha de defesa.
-- WhatsApp destination: checa `connected_whatsapp_business_account` ANTES do POST (evita erro 1838202).
+- WhatsApp destination: **não há mais checagem client-side** — `connected_whatsapp_business_account` foi removido pela API (v25.0, drift confirmado ao vivo, ver Passo 2). Verificação de WA Business conectado é **manual, no Business Manager**, antes de criar este destino.
 - Lead Form destination: roda `/meta-ads-lead-forms` antes pra ter `form_id`.
 - CBO (campanha com `is_adset_budget_sharing_enabled=true`): **remove** `daily_budget` do payload do ad set.
 - **ABO (budget próprio no ad set): sempre `bid_strategy` explícito no payload**, herdado de `CAMPAIGN_BID_STRATEGY` (Passo 1) — default `LOWEST_COST_WITHOUT_CAP`. Sem esse campo a conta rejeita com `100/2490487` (achado T17/T22).
