@@ -16,7 +16,7 @@ regras de elegibilidade reais — não o que o brief *assumia* que funcionaria.
 |---|---|---|---|
 | 1 | Payload candidato do brief (`object_story_spec{page_id,instagram_user_id}` + `source_instagram_media_id`) funciona? | **NÃO** | Erro idêntico ao de um payload sem NENHUMA referência de mídia — a API ignora `source_instagram_media_id` nesse formato (ver seção 2). |
 | 2 | Payload mínimo que realmente funciona | `{"name": "...", "source_instagram_media_id": "<ID>"}` — **sozinho, sem `object_story_spec`** | Confirmado 2x ao vivo (com e sem `object_id`). Ver seção 2. |
-| 3 | `instagram_user_id` vs `instagram_actor_id` | **`instagram_user_id` é o único que funciona** (e nem é obrigatório no payload mínimo); `instagram_actor_id` é rejeitado com erro específico de ID inválido | Ver seção 2.4. Bate com deprecação oficial (cutoff 21/01/2026, já passado). |
+| 3 | `instagram_user_id` vs `instagram_actor_id` | **`instagram_user_id` é o único que funciona** (e nem é obrigatório no payload mínimo); `instagram_actor_id` é rejeitado com erro específico de ID inválido | Ver seção 2.4. Deprecação provada pelo erro ao vivo; data de cutoff citada por fonte secundária fica [não verificado]. |
 | 4 | `object_story_spec` + `source_instagram_media_id` juntos? | **Proibido — erro "objeto promovido ambíguo"** | Erro `100/1487929`, texto explícito citando os dois campos. Ver seção 2.3. |
 | 5 | Reel com música licenciada — o bloqueio existe e é testável? | **SIM, confirmado ao vivo** | Erro `100/2875030` "Não é possível turbinar como anúncios os reels que usam músicas com direitos autorais", + campo preditivo `boost_eligibility_info.boost_ineligible_reason` que já avisa antes de tentar. Ver seção 4. |
 
@@ -119,12 +119,14 @@ rejeita), o que é um comportamento **diferente** do baseline (que ignora tudo e
 `link`). Ou seja, `instagram_actor_id` é processado, mas rejeita o ID moderno
 `17841436814014233` como inválido pra esse campo legado.
 
-`[doc]` Confirma deprecação — WebFetch em ppc.land (artigo sobre simplificação da API
-Instagram/Marketing da Meta), citação literal em inglês: *"In the Marketing API, fields
-like `instagram_actor_id` and `instagram_story_id` will be replaced with `instagram_user_id`
-and `instagram_media_id`, respectively. According to the announcement, several endpoints
-will no longer support legacy objects starting January 21, 2026."* Como hoje é 2026-07-09,
-esse cutoff já passou — bate com o erro observado ao vivo.
+`[não verificado — fonte secundária]` Sobre a deprecação: WebFetch em ppc.land (artigo sobre
+simplificação da API Instagram/Marketing da Meta; URL específica do artigo não recuperada —
+ver Concern #4) citava: *"In the Marketing API, fields like `instagram_actor_id` and
+`instagram_story_id` will be replaced with `instagram_user_id` and `instagram_media_id`,
+respectively. According to the announcement, several endpoints will no longer support legacy
+objects starting January 21, 2026."* A data de cutoff (21/01/2026) fica rotulada [não
+verificado] por falta de fonte primária localizável. **O veredito desta seção não depende
+dela:** a rejeição de `instagram_actor_id` está provada pelo erro ao vivo acima.
 
 ### 2.3 Tentei "completar" o `object_story_spec` com `link_data` — revelou a regra real
 
@@ -235,7 +237,8 @@ graph_api GET "${AD_ACCOUNT_ID}?fields=timezone_name,currency,min_daily_budget,n
 → {"timezone_name":"America/Recife","currency":"BRL","min_daily_budget":522,"name":"CA - Flávio Ahoy","id":"act_763408067802379"}
 ```
 
-(brief citava "522" como valor a conferir — confirmado exato ao vivo, R$5,22).
+(o valor "522" veio do dispatch do controller, que já o havia lido da conta na descoberta
+do ambiente — o GET acima re-confirma ao vivo, R$5,22; a evidência primária é a resposta verbatim.)
 
 ### 3.2 Ad set — achado extra: payload de "boost" não coberto pelas skills existentes
 
