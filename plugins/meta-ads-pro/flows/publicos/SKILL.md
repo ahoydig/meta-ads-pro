@@ -28,6 +28,7 @@ Gerencia todos os tipos de audiences no Meta Ads: Custom Audiences (website, eng
 | Health check | `{audience_id}/health` | GET |
 | Deletar | `{audience_id}` | DELETE |
 | Listar saved audiences | `act_{id}/saved_audiences` | GET |
+| Criar saved audience | `act_{id}/saved_audiences` | POST — **bloqueado hoje pra este app** (ver seção 2.6) |
 
 ---
 
@@ -386,6 +387,85 @@ payload=$(jq -nc --arg src "$SOURCE_AUDIENCE_ID" '{
 }')
 graph_api POST "act_${AD_ACCOUNT_ID#act_}/customaudiences" "$payload"
 ```
+
+---
+
+### 2.6 Saved Audience — hoje somente leitura (escrita bloqueada pelo app)
+
+**Saved Audience** é um `targeting` nomeado e reutilizável (geo + idade + gênero +
+interesses/lookalike), diferente de Custom/Lookalike Audience: não representa pessoas
+coletadas por pixel/CRM/engajamento, é só um preset de segmentação que pode ser
+selecionado na hora de montar um ad set no Ads Manager.
+
+**Estado real (testado ao vivo em 2026-07-09, Task 18):** `POST act_{id}/saved_audiences`
+é rejeitado com
+
+```json
+{"error":{"message":"(#3) Application does not have the capability to make this API call.","type":"OAuthException","code":3}}
+```
+
+HTTP 400, `OAuthException` código `3`. Isso **não é** erro de payload (testado com o
+shape completo, idêntico ao de `flows/conjuntos`) nem de versão — v25.0 é a versão mais
+recente da Marketing API (ver `docs/spikes/2026-07-api-version.md`, Task 1). É um gate
+de **capability/permissão do app** especificamente pra esse endpoint: o mesmo app e
+token escrevem normalmente em `customaudiences`, `campaigns`, `adsets` e
+`leadgen_forms` (ver `tests/06-conjuntos-targeting.sh`, `tests/08-lead-forms.sh`), então
+não é problema de token expirado/escopo geral — é `saved_audiences` especificamente que
+exige uma capability que este app não tem (normalmente liberada via App Review
+adicional na Meta, fora do controle deste plugin).
+
+Teste de regressão em `tests/09-publicos.sh::test_03_saved_audience_create_guardrail` —
+é um **guard-rail**: PASSA enquanto a API continuar rejeitando com esse erro exato;
+**FALHA** se um dia aceitar (ou rejeitar com erro diferente) — nesse caso, promover
+esta seção a fluxo de criação real (ver payload de referência abaixo) e o teste a
+round-trip real.
+
+**O que fazer até lá — fluxo guiado:**
+
+1. Coletar os parâmetros de targeting com o usuário — reaproveita literalmente as
+   mesmas perguntas do `flows/conjuntos/SKILL.md` **Passos 3–6** (geolocalização,
+   idade, gênero, interesses/lookalike/broad + exclusões). Não duplicar aqui: seguir
+   aquele fluxo passo a passo.
+2. Montar o `targeting` completo com o mesmo formato usado no restante do plugin,
+   sempre incluindo `targeting_automation.advantage_audience` (regra do bug #2 —
+   **nunca omitir**, mesma validação de `flows/conjuntos/SKILL.md` Passo 8):
+
+   ```json
+   {
+     "name": "saved_br_25-45",
+     "targeting": {
+       "geo_locations": {"countries": ["BR"]},
+       "age_min": 25,
+       "age_max": 45,
+       "targeting_automation": {"advantage_audience": 0}
+     }
+   }
+   ```
+
+3. Orientar o usuário a criar manualmente no **Ads Manager**: Business Manager →
+   Público-alvo/Audiences → Criar público → Público salvo (Saved Audience) → colar os
+   mesmos parâmetros coletados no passo 1. Deixar claro que é um passo manual — o
+   plugin não executa essa escrita hoje.
+4. Alternativa sem sair do plugin: como todo `targeting` de ad set já aceita o mesmo
+   shape inline (`flows/conjuntos/SKILL.md`), o usuário pode simplesmente criar o ad
+   set direto com esse `targeting` — um Saved Audience só existe pra **reaproveitar**
+   a mesma segmentação em múltiplos ad sets sem redigitar; se for uso único, não faz
+   falta.
+5. Confirmação, seguindo o padrão da seção 10 antes de qualquer ação que o plugin de
+   fato executa (nesse caso, no máximo o passo 2 — montar e mostrar o JSON de
+   referência pro usuário copiar/colar no Ads Manager):
+
+   ```
+   Segmentação (Saved Audience manual — escrita via API bloqueada hoje):
+   ├── Nome sugerido: saved_br_25-45
+   ├── Geo: Brasil (BR)
+   ├── Idade: 25–45
+   ├── Gênero: Todos
+   ├── Advantage Audience: desligado (advantage_audience: 0)
+   └── Próximo passo: criar manualmente no Ads Manager com esses parâmetros
+
+   Confirma que esse é o targeting certo pra eu gerar o JSON de referência? (s/n)
+   ```
 
 ---
 
