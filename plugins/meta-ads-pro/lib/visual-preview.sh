@@ -100,6 +100,8 @@ preview_html_campaign() {
 # Gera HTML único (um <h2> por formato) em
 # ~/.claude/meta-ads-pro/previews/preview_<timestamp>.html, abre no browser
 # (open/xdg-open/cmd.exe conforme OS) e ecoa o path do arquivo.
+# PREVIEW_NO_OPEN=1 pula a abertura no browser (só imprime o path) — pra
+# testes/CI rodarem unattended sem popup.
 preview_meta_oficial() {
   local ref="${1:?preview_meta_oficial: creative_spec_json ou creative_id obrigatório}"
   shift || true
@@ -161,12 +163,16 @@ p.warn{color:#c0392b}
       first=0
 
       printf '<h2>%s</h2>\n' "$fmt"
+      # || body="" nas DUAS branches: sob set -e/pipefail (herdados deste
+      # arquivo), um graph_api que falhe com stdout não-JSON mataria o script
+      # inteiro no jq (pipe com pipefail, sem guard) — a rota de degradação
+      # "sem preview disponível" abaixo nunca seria alcançada.
       if [[ "$is_spec" == "1" ]]; then
         local encoded
         encoded=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$ref")
-        body=$(graph_api GET "${AD_ACCOUNT_ID}/generatepreviews?creative=${encoded}&ad_format=${fmt}" 2>/dev/null | jq -r '.data[0].body // empty')
+        body=$(graph_api GET "${AD_ACCOUNT_ID}/generatepreviews?creative=${encoded}&ad_format=${fmt}" 2>/dev/null | jq -r '.data[0].body // empty') || body=""
       else
-        body=$(graph_api GET "${ref}/previews?ad_format=${fmt}" 2>/dev/null | jq -r '.data[0].body // empty')
+        body=$(graph_api GET "${ref}/previews?ad_format=${fmt}" 2>/dev/null | jq -r '.data[0].body // empty') || body=""
       fi
 
       if [[ -n "$body" ]]; then
@@ -179,10 +185,12 @@ p.warn{color:#c0392b}
     printf '%s\n' '</div></body></html>'
   } > "$out_file"
 
-  open "$out_file" 2>/dev/null \
-    || xdg-open "$out_file" 2>/dev/null \
-    || cmd.exe /c start "$out_file" 2>/dev/null \
-    || echo "preview oficial: abra manualmente $out_file" >&2
+  if [[ "${PREVIEW_NO_OPEN:-0}" != "1" ]]; then
+    open "$out_file" 2>/dev/null \
+      || xdg-open "$out_file" 2>/dev/null \
+      || cmd.exe /c start "$out_file" 2>/dev/null \
+      || echo "preview oficial: abra manualmente $out_file" >&2
+  fi
 
   echo "$out_file"
 }

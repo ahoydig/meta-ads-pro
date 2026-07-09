@@ -116,8 +116,8 @@ test_03_previews_existing_creative_id() {
 }
 
 # ─── Test 04: preview_meta_oficial gera HTML com iframe(s) no disco ───────────
-# Exercita a função real de lib/visual-preview.sh de ponta a ponta (sem abrir
-# browser — testa via subshell que ignora open/xdg-open silenciosamente).
+# Exercita a função real de lib/visual-preview.sh de ponta a ponta.
+# PREVIEW_NO_OPEN=1 pula o open/xdg-open — suíte roda unattended sem popup.
 test_04_preview_meta_oficial_gera_html() {
   if ! _need_env; then
     _skip "test_04_preview_meta_oficial_gera_html" "sem env"; return 0
@@ -127,7 +127,7 @@ test_04_preview_meta_oficial_gera_html() {
   local spec html_path
   spec=$(jq -nc --arg pid "$PAGE_ID" \
     '{object_story_spec:{page_id:$pid, link_data:{message:"preview_meta_oficial test", link:"https://ahoy.digital"}}}')
-  html_path=$(preview_meta_oficial "$spec" MOBILE_FEED_STANDARD 2>/dev/null) \
+  html_path=$(PREVIEW_NO_OPEN=1 preview_meta_oficial "$spec" MOBILE_FEED_STANDARD 2>/dev/null) \
     || _fail "test_04_preview_meta_oficial_gera_html" "função retornou erro"
   [[ -f "$html_path" ]] \
     || _fail "test_04_preview_meta_oficial_gera_html" "arquivo não existe: $html_path"

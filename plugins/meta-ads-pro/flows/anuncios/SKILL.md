@@ -235,7 +235,7 @@ Escolha [n/p/o]:
 ```
 
 - `[p]` Local: `preview_html` (via `lib/_py/preview_html.py` stdin-safe) gera HTML 375×812 mock, `open`/`xdg-open`/`cmd.exe start` conforme OS. Instantâneo, offline, mas é aproximação — não reflete 100% do que a Meta vai renderizar.
-- `[o]` Oficial: `preview_meta_oficial {creative_spec}` (`lib/visual-preview.sh`, Task 14) chama `generatepreviews` de verdade e monta HTML com o(s) iframe(s) oficiais da Meta — um `<h2>` por `ad_format` (ex.: `MOBILE_FEED_STANDARD` pra Normal, `INSTAGRAM_STANDARD`/`INSTAGRAM_STORY`/`INSTAGRAM_REELS` conforme posicionamento escolhido). Mais fiel, mas custa 1 chamada GET por formato — não usar em loop apertado.
+- `[o]` Oficial: `preview_meta_oficial <creative_spec>` (`lib/visual-preview.sh`, Task 14) chama `generatepreviews` de verdade e monta HTML com o(s) iframe(s) oficiais da Meta — um `<h2>` por `ad_format` (ex.: `MOBILE_FEED_STANDARD` pra Normal, `INSTAGRAM_STANDARD`/`INSTAGRAM_STORY`/`INSTAGRAM_REELS` conforme posicionamento escolhido). Mais fiel, mas custa 1 chamada GET por formato — não usar em loop apertado.
 
 ### Passo 9 — Confirmação explícita
 
