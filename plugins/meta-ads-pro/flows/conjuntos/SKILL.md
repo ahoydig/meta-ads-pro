@@ -205,6 +205,18 @@ Filtra por `subtype == LOOKALIKE`. User escolhe. Payload: `custom_audiences: [{i
 
 **[4] Custom Audience direta:** igual lookalike mas inclui todos os subtypes (CUSTOM, WEBSITE, ENGAGEMENT etc.).
 
+**Exclusões (pergunta SEMPRE, default nenhuma):**
+
+```
+Excluir algum público? (ex.: clientes atuais, leads já convertidos) [n/lista]
+[1] leads/pacientes do CRM   [2] compradores/fechados   [3] escolher da lista   [n] nenhum
+```
+
+Payload: `targeting.excluded_custom_audiences: [{id: "AUD_ID"}]`.
+Exclusão por interesse/comportamento (raro): `targeting.exclusions: {interests: [{id, name}]}`.
+
+**Regra:** exclusão NUNCA substitui `advantage_audience` — os dois coexistem no payload (advantage_audience expande inclusões; exclusões são respeitadas mesmo expandindo).
+
 ### Passo 7 — Posicionamentos (placements)
 
 ```

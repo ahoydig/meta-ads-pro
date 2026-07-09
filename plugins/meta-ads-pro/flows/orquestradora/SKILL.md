@@ -47,7 +47,20 @@ check_pixel || true
 
 Se doctor passou, exporta flags:
 - `FALLBACK_DARK_POST` (bool) — usado por anuncios
-- `AD_ACCOUNT_ID`, `PAGE_ID`, `INSTAGRAM_USER_ID` — das envs do CLAUDE.md
+- `AD_ACCOUNT_ID`, `PAGE_ID`, `INSTAGRAM_USER_ID`, `PIXEL_ID` (quando presente) — das envs do CLAUDE.md
+
+Ponte CLAUDE.md → env do `PIXEL_ID` (cobre projeto antigo que tem o id só no
+CLAUDE.md, sem `PIXEL_ID` no `.env` — sem isso o check 14 do doctor avisaria
+⚠ pra sempre; projetos novos já recebem `PIXEL_ID` no `.env` pelo setup
+Passo 8):
+
+```bash
+# só busca no CLAUDE.md se ainda não veio do .env; ignora campo comentado
+if [[ -z "${PIXEL_ID:-}" ]]; then
+  pixel_md=$(grep -m1 '^pixel_id:' CLAUDE.md 2>/dev/null | cut -d':' -f2- | sed 's/#.*//' | xargs) || pixel_md=""
+  [[ -n "$pixel_md" ]] && export PIXEL_ID="$pixel_md" || true
+fi
+```
 
 ### Passo 3 — Acquire lockfile
 

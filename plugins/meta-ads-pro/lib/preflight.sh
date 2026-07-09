@@ -1,7 +1,29 @@
 #!/usr/bin/env bash
-# preflight.sh — 10 checks do doctor (meta-ads-doctor)
+# preflight.sh — 14 checks do doctor (meta-ads-doctor)
 # Cada check retorna 0 (ok) / 1 (warn) / 2 (bloqueia)
 # e ecoa mensagem formatada no stdout.
+#
+# ─── como as envs chegam ────────────────────────────────────────────────────
+# Este arquivo NÃO carrega .env sozinho — não há `set -a; source .env` aqui.
+# Quem invoca run_preflight (ou um check isolado) é responsável por já ter
+# exportado as vars no shell ANTES de sourcear preflight.sh. Padrão usado em
+# todo o resto do plugin (ex: flows/setup/SKILL.md Passo 5):
+#   export VAR=$(grep '^VAR=' .env | cut -d'=' -f2-)
+# Vars consumidas, por check:
+#   META_ACCESS_TOKEN, META_API_VERSION — todos os checks (via graph_api.sh)
+#   AD_ACCOUNT_ID                       — checks 5/6/8
+#   PAGE_ID                             — checks 7/13
+#   PIXEL_ID                            — check 14 (novo). Chega por 2 caminhos:
+#                                          direto do .env (setup Passo 8 grava
+#                                          PIXEL_ID=<id> ao descobrir/criar o
+#                                          pixel) OU pela ponte CLAUDE.md→env
+#                                          da orquestradora (Passo 2), que
+#                                          cobre projetos antigos onde o id
+#                                          existe só como pixel_id: no CLAUDE.md.
+#   GHL_PIT_TOKEN, GHL_LOCATION_ID       — check 11 (novo, opcional — GHL/FluxiHub)
+#   RECEIVER_HEALTH_URL                  — check 12 (novo, opcional — receiver de leadgen)
+# Nenhuma dessas 4 novas vars é obrigatória — ausência = check retorna ⚠ (1),
+# nunca bloqueia (2), pra não travar quem não usa CRM/receiver/CAPI.
 
 set -euo pipefail
 
@@ -200,7 +222,73 @@ check_learnings() {
   echo "✓ Sem learnings pendentes"
 }
 
-# ─── runner completo: roda todos os 10 checks ──────────────────────────────
+# ─── check 11: GHL/FluxiHub conectável ─────────────────────────────────────
+check_ghl() {
+  [[ -z "${GHL_PIT_TOKEN:-}" || -z "${GHL_LOCATION_ID:-}" ]] \
+    && { echo "⚠ GHL não configurado (ok se não usa CRM) — /meta-ads-crm"; return 1; }
+  local r
+  r=$(curl -sS -H "Authorization: Bearer ${GHL_PIT_TOKEN}" -H "Version: 2021-07-28" \
+    "https://services.leadconnectorhq.com/locations/${GHL_LOCATION_ID}" 2>/dev/null || true)
+  if echo "$r" | jq -e '.location.id' >/dev/null 2>&1; then
+    echo "✓ GHL: subconta $(echo "$r" | jq -r .location.name)"
+  else
+    echo "✗ GHL token/location inválidos — regenerar Private Integration"; return 2
+  fi
+}
+
+# ─── check 12: receiver de leadgen no ar ───────────────────────────────────
+check_receiver() {
+  [[ -z "${RECEIVER_HEALTH_URL:-}" ]] \
+    && { echo "⚠ Receiver não configurado (webhook de atribuição off)"; return 1; }
+  local r
+  r=$(curl -sS --max-time 10 "$RECEIVER_HEALTH_URL" 2>/dev/null || true)
+  if echo "$r" | jq -e '.received_total' >/dev/null 2>&1; then
+    echo "✓ Receiver up ($(echo "$r" | jq -r .received_total) leads recebidos)"
+  else
+    echo "✗ Receiver fora do ar — leads seguem só pela nativa GHL"; return 2
+  fi
+}
+
+# ─── check 13: página subscrita em leadgen ─────────────────────────────────
+# Desvio do brief: GET subscribed_apps exige PAGE TOKEN, não o token de app/user
+# (META_ACCESS_TOKEN) — confirmado ao vivo: erro 190/2069032 "é necessário um
+# token de acesso à Página para esta ligação na nova experiência de Páginas"
+# (ver docs/spikes/2026-07-webhook-leadgen.md, item 3). O page token é derivado
+# aqui dentro (mesmo padrão de rollback.sh/check_page_token), nunca ecoado, com
+# guard `|| page_token=""` (trap da T6 sob set -e/pipefail).
+check_leadgen_subscription() {
+  local page_id="${PAGE_ID:?}"
+  local page_token
+  page_token=$(graph_api GET "${page_id}?fields=access_token" 2>/dev/null | jq -r '.access_token // empty') || page_token=""
+  if [[ -z "$page_token" ]]; then
+    echo "⚠ Sem page token — não deu pra checar subscrição leadgen (ver check_page_token)"
+    return 1
+  fi
+  local r
+  r=$(curl -sS --max-time 10 \
+    "https://graph.facebook.com/${META_API_VERSION:-v25.0}/${page_id}/subscribed_apps?fields=subscribed_fields&access_token=${page_token}" \
+    2>/dev/null || true)
+  if echo "$r" | jq -e '.data[]?.subscribed_fields | index("leadgen")' >/dev/null 2>&1; then
+    echo "✓ Página subscrita em leadgen"
+  else
+    echo "⚠ Página SEM subscrição leadgen — webhook não recebe (runbook Task 10)"; return 1
+  fi
+}
+
+# ─── check 14: dataset CAPI ativo ──────────────────────────────────────────
+check_capi_dataset() {
+  [[ -z "${PIXEL_ID:-}" ]] && { echo "⚠ Sem PIXEL_ID — CAPI do funil inativa"; return 1; }
+  local r last
+  r=$(graph_api GET "${PIXEL_ID}?fields=name,last_fired_time" 2>/dev/null || true)
+  last=$(echo "$r" | jq -r '.last_fired_time // empty') || last=""
+  if [[ -n "$last" ]]; then
+    echo "✓ CAPI/pixel: último evento em $last"
+  else
+    echo "⚠ Pixel sem eventos ainda — rodar /meta-ads-crm capi-testar"; return 1
+  fi
+}
+
+# ─── runner completo: roda todos os 14 checks ──────────────────────────────
 run_preflight() {
   local silent="${1:-0}"
   local max_severity=0
@@ -229,6 +317,10 @@ run_preflight() {
   _run_check check_pixel
   _run_check check_claude_md_config
   _run_check check_learnings
+  _run_check check_ghl
+  _run_check check_receiver
+  _run_check check_leadgen_subscription
+  _run_check check_capi_dataset
   # check_app_mode é separado (faz chamada real à API — caro)
   # Rodado via --full-check ou explicitamente
 

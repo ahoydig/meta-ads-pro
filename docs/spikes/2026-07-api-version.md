@@ -290,3 +290,28 @@ escrita.
 enviado no payload — provável default herdado da conta/Página (não investigado nesta
 task, fora de escopo; não afeta o resultado do teste, que valida só a persistência de
 `asset_customization_rules`).
+
+## Addendum (Task 18, 2026-07-09) — `saved_audiences` POST bloqueado por capability do app
+
+Durante a Task 18 (escrita de saved audiences via API), `POST act_{id}/saved_audiences`
+foi testado ao vivo na conta de teste (`AD_ACCOUNT_ID=act_763408067802379`) com
+`GRAPH_API_SKIP_RESOLVER=1` (pra descartar interferência do error-resolver) e retornou:
+
+```json
+{"error":{"message":"(#3) Application does not have the capability to make this API call.","type":"OAuthException","code":3,"fbtrace_id":"AWHZlSDOOfLEIw5ZzCJmhlF"}}
+```
+
+HTTP 400, `OAuthException` código `3`. **Não é** um breaking change de versão — não
+consta em nenhum changelog auditado acima, e o mesmo app/token escreve normalmente em
+`customaudiences`, `campaigns`, `adsets` e `leadgen_forms` (endpoints já cobertos pela
+auditoria de superfície desta task). É um gate de **capability/permissão do app**
+específico do endpoint `saved_audiences` — normalmente liberado via App Review
+adicional na Meta, fora do controle deste plugin ou desta task.
+
+**Decisão:** `flows/publicos/SKILL.md` seção 2.6 documenta o estado como "somente
+leitura + criação guiada no Ads Manager" (não força a escrita). Teste de regressão em
+`tests/09-publicos.sh::test_03_saved_audience_create_guardrail` — guard-rail que
+**PASSA** enquanto a API continuar rejeitando com esse erro exato e **FALHA** se a
+API um dia aceitar (ou rejeitar com um erro diferente), sinalizando a necessidade de
+reavaliar. Ver relatório completo em `.superpowers/sdd/task-18-report.md`.
+>>>>>>> feat/v1.1-track-c
