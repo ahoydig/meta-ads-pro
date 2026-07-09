@@ -225,6 +225,24 @@ test_12_preview_html_stub() {
   _skip "test_12_preview_html_stub" "implementação em CP3c (visual-preview HTML interativo do form)"
 }
 
+# ─── Test 13: build_tracking_parameters gera JSON válido ──────────────────────
+test_13_build_tracking_parameters() {
+  # shellcheck source=../lib/utm.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/utm.sh"
+  local out
+  out=$(build_tracking_parameters "Form Clínica São João") \
+    || _fail "test_13_build_tracking_parameters" "função falhou"
+  echo "$out" | jq -e '.utm_source == "meta-leadform" and .utm_medium == "trafego-pago"' >/dev/null \
+    || _fail "test_13_build_tracking_parameters" "campos base errados: $out"
+  echo "$out" | jq -re '.utm_campaign' | grep -Eq '^[0-9]{8}_form-clinica-sao-joao$' \
+    || _fail "test_13_build_tracking_parameters" "utm_campaign fora do padrão: $out"
+  # merge de extras
+  out=$(build_tracking_parameters "X" '{"utm_content":"boost"}')
+  echo "$out" | jq -e '.utm_content == "boost"' >/dev/null \
+    || _fail "test_13_build_tracking_parameters" "merge de extras falhou: $out"
+  _pass "test_13_build_tracking_parameters"
+}
+
 # ─── Execução ─────────────────────────────────────────────────────────────────
 test_01_create_complete_form
 test_02_missing_intro_rejected
@@ -238,6 +256,7 @@ test_09_multiple_choice_question
 test_10_qualifier_disqualifier_stub
 test_11_conditional_logic_stub
 test_12_preview_html_stub
+test_13_build_tracking_parameters
 
 echo ""
 echo "lead-forms: ${PASS} passou, ${FAIL} falhou, ${SKIP} pulados"
