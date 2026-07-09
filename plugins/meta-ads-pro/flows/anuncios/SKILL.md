@@ -1,11 +1,11 @@
 ---
 name: meta-ads-anuncios
-description: Criar anúncios Meta Ads em 2 modos (Normal 1:1 ou Dinâmico asset_feed_spec). Upload multipart cross-platform, dev mode fallback transparente via dark post, cache de media_fbid anti-reuso, geração de copy com humanizer, preview ASCII/HTML. Fix dos bugs #3 (dev mode), #4 (cartesiano), #5 (media_fbid).
+description: Criar anúncios Meta Ads em 3 modos (Normal 1:1, Dinâmico asset_feed_spec, ou Carrossel child_attachments). Upload multipart cross-platform, dev mode fallback transparente via dark post, cache de media_fbid anti-reuso, geração de copy com humanizer, preview ASCII/HTML. Fix dos bugs #3 (dev mode), #4 (cartesiano), #5 (media_fbid).
 ---
 
 # meta-ads-anuncios
 
-A sub-skill mais complexa do plugin. Suporta 2 modos de criativo (Normal/Dinâmico), 4 formatos (imagem/vídeo/carrossel/collection), upload cross-platform (sips/ImageMagick), geração de copy via Claude multimodal + humanizer.
+A sub-skill mais complexa do plugin. Suporta 3 modos de criativo (Normal/Dinâmico/Carrossel), 4 formatos (imagem/vídeo/carrossel/collection), upload cross-platform (sips/ImageMagick), geração de copy via Claude multimodal + humanizer.
 
 ## Quando usar
 
@@ -41,8 +41,17 @@ Qual tipo de criativo?
     Limites v25.0: 10 imgs OR 1 vídeo + 5 headlines + 5 descriptions +
     5 primary texts + 5 CTAs.
 
-Escolha [1/2]:
+[3] Carrossel (2-10 cartões) — N imagens fixas, cada uma com seu próprio
+    headline/descrição/link (child_attachments), rolagem lateral no feed.
+    Resultado: 1 ad único com N cartões fixos (não é combinatório — a ordem
+    de exibição pode variar via multi_share_optimized, mas os cartões em si
+    não mudam como no Dinâmico).
+
+Escolha [1/2/3]:
 ```
+
+Se `[3]`, os passos 3 (matching Normal) e 4 (limites de `asset_feed_spec`) não
+se aplicam — vai direto pra seção **Modo Carrossel** abaixo.
 
 ### Passo 3 — Se Normal: validar matching (FIX BUG #4)
 
@@ -84,6 +93,102 @@ Se user tentou 12 imagens:
 ⚠ Dinâmico aceita no máximo 10 imagens (você tem 12).
 Escolha 10 pra usar, ou troque pra 1 vídeo (sem imagens).
 ```
+
+### Modo Carrossel (Task 16)
+
+Terceiro modo do Passo 2. Diferente do Dinâmico (`asset_feed_spec`, a Meta
+combina automaticamente) e do Normal (N ads separados, 1 imagem cada), o
+Carrossel é **1 ad único com N cartões fixos** —
+`object_story_spec.link_data.child_attachments` — cada cartão com sua própria
+imagem, headline (`name`), descrição e link.
+
+1. **Coleta de N imagens (2–10 cartões).** Mesmo mecanismo do Passo 5 (paths,
+   pasta ou URLs), mas valida a contagem antes de seguir:
+
+   ```
+   ⚠ Carrossel aceita de 2 a 10 cartões (você tem <N>).
+   ```
+
+   Limite confirmado na [doc oficial](https://developers.facebook.com/docs/marketing-api/guides/videoads/):
+   *"A 2-10 element array of link objects required for carousel ads"* — e ela
+   recomenda pelo menos 3 pra performance (2 é só pra integrações leves,
+   resultado sub-ótimo). O teto de 10 **não foi testado ao vivo nesta task**
+   (custaria 1 POST fadado a erro só pra confirmar um número já documentado) —
+   `[não verificado ao vivo, fonte: doc oficial]`.
+
+2. **Copy por cartão** — reusa o pipeline de geração do Passo 6 (`gen_copy` +
+   humanizer obrigatório), mas gera **1 headline + 1 descrição por cartão**
+   (não N variações pra escolher — cada cartão do carrossel é fixo, sem
+   combinação automática como no Dinâmico):
+
+   ```bash
+   for i in "${!imagens[@]}"; do
+     headline["$i"]=$(gen_copy headline 1 "${imagens[$i]}" "$objective" "$audience" "$voice_file" "$product")
+     descricao["$i"]=$(gen_copy description 1 "${imagens[$i]}" "$objective" "$audience" "$voice_file" "$product")
+   done
+   ```
+
+3. **Upload** — `upload_image` (Passo 7) por cartão. Cache por SHA256 poupa
+   re-upload se 2+ cartões apontarem pro mesmo arquivo. **Testado ao vivo**
+   (`tests/20-criativo-avancado.sh test_05_carousel`): a Meta aceita o MESMO
+   `image_hash` repetido em múltiplos `child_attachments` — útil quando o
+   cartão varia só texto/link, não a imagem.
+
+4. **UTM dinâmico — POR CARTÃO (regra inviolável 8 se aplica a CADA cartão).**
+   Diferente do Normal/Dinâmico (1 `link` por ad/variação), o Carrossel tem
+   **N+1 links**: o `link` principal de `link_data` **e** um `link` dentro de
+   CADA `child_attachments[]`. Todos passam por `build_utm_url_dynamic`,
+   exceto deeplinks (pula como sempre — `is_external_url`):
+
+   ```bash
+   source "$CLAUDE_PLUGIN_ROOT/lib/utm.sh"
+
+   is_external_url "$link_principal" && link_principal=$(build_utm_url_dynamic "$link_principal")
+   for i in "${!cartoes_link[@]}"; do
+     is_external_url "${cartoes_link[$i]}" && cartoes_link[$i]=$(build_utm_url_dynamic "${cartoes_link[$i]}")
+   done
+   ```
+
+5. **Preview (Passo 8) — oficial recomendado.** O preview local (`preview_html`,
+   mock HTML) não simula rolagem lateral entre cartões; só o oficial
+   (`preview_meta_oficial`, Task 14, via `generatepreviews`) renderiza o
+   carrossel de verdade. Ad format sugerido: `MOBILE_FEED_STANDARD` (cobre a
+   rolagem lateral no feed).
+
+6. **Criação (Passo 10) — sempre PAUSED (regra 1) + manifest + rollback.**
+   Payload — **testado ao vivo (Task 16), aceito verbatim, zero correção de
+   sintaxe**:
+
+   ```json
+   {
+     "name": "<nome gerado via nomenclatura>",
+     "object_story_spec": {
+       "page_id": "<page_id>",
+       "link_data": {
+         "message": "<legenda do carrossel>",
+         "link": "<link principal, com UTM dinâmico>",
+         "child_attachments": [
+           {"link": "<link cartão 1, com UTM dinâmico>", "image_hash": "<hash 1>", "name": "<headline 1>", "description": "<descrição 1>"},
+           {"link": "<link cartão 2, com UTM dinâmico>", "image_hash": "<hash 2>", "name": "<headline 2>", "description": "<descrição 2>"}
+         ],
+         "multi_share_optimized": true,
+         "multi_share_end_card": false
+       }
+     }
+   }
+   ```
+
+   - `multi_share_optimized` — *"automatically select and order images and
+     links. Default is true"* ([doc oficial](https://developers.facebook.com/docs/marketing-api/reference/ad-creative-link-data/)).
+     Deixa a Meta reordenar os cartões conforme performance.
+   - `multi_share_end_card` — *"If set to false, removes the end card which
+     displays the page icon. Default is true"* (mesma doc). `false` = sem
+     cartão final "veja a página"; `true` (default, se omitido) mantém.
+   - `POST {ad_account}/adcreatives` → `id` do creative. Depois, ad normal com
+     `creative.creative_id` (igual aos outros modos).
+   - Registra em manifest (`manifest_add "adcreative" "$creative_id"`) e no ad
+     — `rollback_on_failure` cobre o Carrossel sem mudança: é 1 creative + 1 ad,
+     mesma topologia do Normal single-ad.
 
 ### Passo 5 — Coletar criativos
 
@@ -342,6 +447,11 @@ Pra cada combo (imagem/vídeo + copy) em Normal, OU uma única vez em Dinâmico:
 
 **Nunca** cria N×M ads em Dinâmico. Asset feed já combina automaticamente.
 
+**Se Carrossel (ambos app modes):** 1 único creative com
+`object_story_spec.link_data.child_attachments` — payload completo, decisão de
+hash reusado vs. uploads distintos, e UTM por cartão na seção **Modo
+Carrossel** (acima, entre Passo 4 e Passo 5).
+
 #### Placement customization (Task 15, só em modo Dinâmico)
 
 Pergunta adicional, depois de montar o `asset_feed_spec` base:
@@ -456,6 +566,7 @@ Em qualquer falha, rollback reverte tudo na topologia correta (ads → creatives
 | Vídeos em `asset_feed_spec` | 1 (não mistura com images) |
 | `titles`/`descriptions`/`bodies` | 5 cada |
 | `call_to_action_types` em `asset_feed_spec` | 5 |
+| `child_attachments` (Carrossel) | 2–10 (recomendado ≥3 pra performance) |
 | Tamanho imagem | 30MB |
 | Tamanho vídeo | 4GB |
 | Duração vídeo feed | 241min |
@@ -484,6 +595,7 @@ Ver `lib/error-catalog.yaml` e `lib/error-resolver.sh`:
 - `lib/upload_video.sh` — 3 estratégias por tamanho
 - `lib/copy_generator.sh` — gen_copy (invoca copy_prompt_builder + claude_invoke_api)
 - `lib/humanizer-bridge.sh` — humanize_text, humanize_array com 3 fallbacks
+- `lib/utm.sh` — build_utm_url_dynamic, build_utm_url_static, is_external_url, strip_existing_utm (passo 7.5 e Modo Carrossel)
 - `lib/error-resolver.sh` — switch_to_dark_post_flow (fix bug #3)
 - `lib/rollback.sh` — rollback_on_failure automático
 - `lib/visual-preview.sh` — preview_ascii, preview_html (stdin-safe), preview_meta_oficial (iframe oficial via generatepreviews, Task 14)

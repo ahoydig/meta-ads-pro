@@ -32,6 +32,12 @@
 #     placements via adlabels). 2 uploads + 1 POST /adcreatives.
 # Ambos usam o array `created_creatives` + trap de cleanup (DELETE no EXIT).
 #
+# Task 16 acrescenta `test_05_carousel` (próximo índice livre — 01/02/02/03/03/04
+# já usados por T14/T15): modo Carrossel via `child_attachments`. 1 upload +
+# POST /adcreatives com 3 cartões (`multi_share_optimized`/`multi_share_end_card`)
+# + GET round-trip (`child_attachments.length == 3`) + cleanup. Ver comentário
+# na função pra decisão hash-reusado-vs-3-uploads.
+#
 # Bash 3.2 portable. shellcheck clean (disables documentados).
 
 set -euo pipefail
@@ -236,6 +242,57 @@ test_03_asset_customization_rules() {
   _pass "test_03_asset_customization_rules (cid=$cid)"
 }
 
+# ─── Test 05: modo Carrossel via child_attachments (Task 16) ─────────────────
+# Payload do brief: object_story_spec.link_data com child_attachments[3]
+# (link+image_hash+name+description cada), multi_share_optimized:true,
+# multi_share_end_card:false. UTM estático de teste embutido no `link` principal
+# e em CADA `child_attachments[].link` (no fluxo real isso é UTM DINÂMICO via
+# `build_utm_url_dynamic`, por cartão — ver SKILL.md "Modo Carrossel"; aqui é só
+# um valor fixo de teste, não passa pelo helper).
+#
+# DECISÃO hash-reusado vs. 3 uploads: testado ao vivo — 1 UPLOAD (seed_1080.jpg)
+# + a MESMA image_hash repetida nos 3 cartões É aceita pela Meta (POST 201, GET
+# round-trip confirma os 3 child_attachments com o hash idêntico). Preferido a
+# 3 uploads (ou 2 variações via sips) porque o que este teste cobre é o SHAPE
+# do payload (3 cartões, campos certos, flags certas) — não a distinção visual
+# entre imagens, que não é testável via assert de API. Poupa 2 writes.
+test_05_carousel() {
+  if ! _need_env; then
+    _skip "test_05_carousel" "sem env"; return 0
+  fi
+  # shellcheck source=../lib/graph_api.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/graph_api.sh"
+  # shellcheck source=../lib/upload_media.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/upload_media.sh"
+  local fixture hash payload r cid
+  fixture=$(ls "$PLUGIN_ROOT"/tests/fixtures/seed_1080.jpg 2>/dev/null | head -1)
+  [[ -n "$fixture" ]] || { _skip "test_05_carousel" "sem fixture seed_1080.jpg"; return 0; }
+  hash=$(upload_image "$fixture") || _fail "test_05_carousel" "upload falhou"
+  payload=$(jq -nc --arg pid "$PAGE_ID" --arg h "$hash" '{
+    name:"TEST_carousel",
+    object_story_spec:{page_id:$pid,
+      link_data:{
+        message:"Legenda do carrossel",
+        link:"https://ahoy.digital?utm_source=meta&utm_medium=trafego-pago&utm_campaign=test_carousel",
+        child_attachments:[
+          {link:"https://ahoy.digital/a?utm_source=meta&utm_medium=trafego-pago&utm_campaign=test_carousel", image_hash:$h, name:"Card 1", description:"Desc 1"},
+          {link:"https://ahoy.digital/b?utm_source=meta&utm_medium=trafego-pago&utm_campaign=test_carousel", image_hash:$h, name:"Card 2", description:"Desc 2"},
+          {link:"https://ahoy.digital/c?utm_source=meta&utm_medium=trafego-pago&utm_campaign=test_carousel", image_hash:$h, name:"Card 3", description:"Desc 3"}
+        ],
+        multi_share_optimized:true,
+        multi_share_end_card:false
+      }}}')
+  r=$(graph_api POST "${AD_ACCOUNT_ID}/adcreatives" "$payload") \
+    || _fail "test_05_carousel" "POST falhou: $r"
+  cid=$(echo "$r" | jq -r .id); created_creatives+=("$cid")
+  local got
+  got=$(graph_api GET "${cid}?fields=object_story_spec") \
+    || _fail "test_05_carousel" "GET round-trip falhou: $got"
+  echo "$got" | jq -e '(.object_story_spec.link_data.child_attachments | length) == 3' >/dev/null \
+    || _fail "test_05_carousel" "child_attachments ausente ou length != 3: $got"
+  _pass "test_05_carousel (cid=$cid)"
+}
+
 # ─── Execução ───────────────────────────────────────────────────────────────
 # sleep leve entre testes GET (baratos); sleep maior antes dos testes que
 # escrevem (upload + adcreatives, T15) — outro track pode usar a mesma conta
@@ -251,6 +308,8 @@ sleep "${CRIATIVO_TEST_WRITE_SLEEP:-15}"
 test_02_image_crops
 sleep "${CRIATIVO_TEST_WRITE_SLEEP:-15}"
 test_03_asset_customization_rules
+sleep "${CRIATIVO_TEST_WRITE_SLEEP:-15}"
+test_05_carousel
 
 echo ""
 echo "20-criativo-avancado: ${PASS} passou, ${FAIL} falhou, ${SKIP} pulados"
