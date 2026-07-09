@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/08-lead-forms.sh — Camada 3: sub-skill lead-forms (14 testes)
+# tests/08-lead-forms.sh — Camada 3: sub-skill lead-forms (15 testes)
 #
 # Estratégia:
 #   - Testes 01-04 são client-side (validação pré-POST, sem token necessário)
@@ -8,6 +8,9 @@
 #   - Testes 10-12 são stubs pra CP3c (qualifier/conditional/preview)
 #   - Teste 13 é client-side (build_tracking_parameters, lib/utm.sh)
 #   - Teste 14 faz POST real com tracking_parameters (requer META_ACCESS_TOKEN + PAGE_ID)
+#   - Teste 15 faz POST real com thank_you_page CTA WHATSAPP (número explícito) —
+#     regressão do CTA recomendado do funil (docs/spikes/2026-07-leadform-avancado.md,
+#     seção 5); requer META_ACCESS_TOKEN + PAGE_ID
 #
 # Cleanup: todos os forms criados vão pra array; ARCHIVED no trap EXIT (ver
 # _cleanup_forms — leadgen_forms NÃO suportam DELETE via Graph API, só
@@ -325,6 +328,51 @@ test_14_tracking_parameters_roundtrip() {
   _pass "test_14_tracking_parameters_roundtrip (fid=$fid)"
 }
 
+# ─── Test 15: thank_you_page CTA WHATSAPP com número explícito (live) ─────────
+# Regressão do CTA recomendado pro funil (docs/spikes/2026-07-leadform-avancado.md,
+# seção 5): WHATSAPP aceita business_phone_number (E.164) + country_code (alpha-2)
+# opcionais mas juntos — round-trip via GET confirma os dois persistidos. O
+# disqualified_thank_you_page fica com button_type NONE (já é o default de
+# build_minimal_form_payload, mantido explícito aqui pra documentar a intenção).
+test_15_thankyou_whatsapp_cta() {
+  if ! _need_token; then
+    _skip "test_15_thankyou_whatsapp_cta" "sem META_ACCESS_TOKEN/PAGE_ID"; return 0
+  fi
+  # shellcheck source=../lib/graph_api.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/graph_api.sh"
+
+  local payload response fid
+  payload=$(build_minimal_form_payload | jq \
+    '.thank_you_page = {
+       title: "Obrigado!",
+       body: "Em contato via WhatsApp",
+       button_type: "WHATSAPP",
+       button_text: "Chamar no WhatsApp",
+       business_phone_number: "+5591999999999",
+       country_code: "BR"
+     }
+     | .disqualified_thank_you_page = {
+       title: "Não elegível",
+       body: "Siga nosso IG",
+       button_type: "NONE"
+     }')
+  response=$(graph_api POST "${PAGE_ID}/leadgen_forms" "$payload") \
+    || _fail "test_15_thankyou_whatsapp_cta" "POST falhou: $response"
+  fid=$(echo "$response" | jq -r '.id // empty')
+  [[ -n "$fid" ]] || _fail "test_15_thankyou_whatsapp_cta" "sem id no response: $response"
+  created_forms+=("$fid")
+
+  local get_response
+  get_response=$(graph_api GET "${fid}?fields=id,thank_you_page") \
+    || _fail "test_15_thankyou_whatsapp_cta" "GET pós-criação falhou"
+  echo "$get_response" | jq -e \
+    '.thank_you_page.button_type == "WHATSAPP"
+       and .thank_you_page.business_phone_number == "+5591999999999"
+       and .thank_you_page.country_code == "BR"' >/dev/null \
+    || _fail "test_15_thankyou_whatsapp_cta" "round-trip não bateu: $get_response"
+  _pass "test_15_thankyou_whatsapp_cta (fid=$fid)"
+}
+
 # ─── Execução ─────────────────────────────────────────────────────────────────
 test_01_create_complete_form
 test_02_missing_intro_rejected
@@ -340,6 +388,7 @@ test_11_conditional_logic_stub
 test_12_preview_html_stub
 test_13_build_tracking_parameters
 test_14_tracking_parameters_roundtrip
+test_15_thankyou_whatsapp_cta
 
 echo ""
 echo "lead-forms: ${PASS} passou, ${FAIL} falhou, ${SKIP} pulados"

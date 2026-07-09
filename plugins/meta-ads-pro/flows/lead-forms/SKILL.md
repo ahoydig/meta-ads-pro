@@ -176,21 +176,55 @@ Usuário que PASSOU no filtro (qualificado) vai ver:
 ```
 Título: ____
 Descrição: ____
-CTA button:
-  [1] Ligar agora (CALL) — requer telefone
-  [2] Visitar site (VIEW_URL) — requer URL
-  [3] Baixar arquivo (DOWNLOAD) — requer URL de PDF
-  [4] WhatsApp (MESSAGE) — requer número
+
+CTA button — tipos validados AO VIVO contra a Graph API v25.0
+(spike docs/spikes/2026-07-leadform-avancado.md, seção 5):
+
+  [1] Nenhum (NONE)              — sem botão. Único tipo que dispensa button_text.
+  [2] Visitar site (VIEW_WEBSITE) — requer button_text + website_url (recebe UTM estático)
+  [3] Ver no Facebook (VIEW_ON_FACEBOOK) — requer button_text
+  [4] Ligar agora (CALL_BUSINESS) — requer button_text + business_phone_number
+      (E.164 completo, ex. "+5511987654321") + country_code (alpha-2, ex. "BR").
+      Os dois campos são exigidos JUNTOS — número sem country_code (ou número
+      "fake" tipo +5511999999999) dá erro (#192) not a valid phone number.
+  [5] Baixar arquivo (DOWNLOAD)  — requer button_text + website_url apontando
+      pro arquivo (recebe UTM estático). NÃO usa gated_file.
+  [6] WhatsApp (WHATSAPP)        — requer button_text apenas (mínimo aceito).
+      RECOMENDAÇÃO DO FUNIL: sempre passar business_phone_number (E.164) +
+      country_code (alpha-2) explícitos. Sem eles o form ainda cria, mas o
+      clique presumivelmente aponta pro WhatsApp conectado à Página — esse
+      comportamento de clique não foi verificado ao vivo (só a criação).
+  [7] Código promocional (PROMO_CODE) — requer button_text apenas. Onde o
+      código promocional em si é configurado NÃO foi descoberto no spike
+      (nenhum campo de código foi exigido nem apareceu no round-trip via GET)
+      — avisar o usuário dessa lacuna, não fabricar um campo.
+  [8] Agendar no site (BOOK_ON_WEBSITE) — requer button_text + website_url
+      (recebe UTM estático).
+
+NÃO OFERECER — rejeitados ao vivo pela API nesta conta/versão:
+  ✗ MESSAGE_BUSINESS     → erro: "(#100) This button type is not yet
+                             supported for Thank You Page"
+  ✗ SCHEDULE_APPOINTMENT → erro: "(#100) Appointment integration is missing
+                             for Thank You Page" (exige integração de
+                             agendamento pré-configurada na Página, não é só
+                             uma URL)
+
+[não verificado ao vivo] P2B_MESSENGER — existe no enum oficial da Graph API
+  (referência developers.facebook.com/docs/graph-api/reference/page/leadgen_forms),
+  mas não foi testado nesta conta (fora do orçamento do spike). Não oferecer
+  no menu até confirmar em spike futuro.
 ```
 
-**UTM estático em VIEW_URL/DOWNLOAD (OBRIGATÓRIO):**
+**Achado do spike:** todo `button_type` diferente de `NONE` exige `button_text` — sem ele, erro `(#100) Button text is missing for Thank You Page`.
 
-Lead form NÃO suporta macros `{{campaign.name}}` — Meta resolve URL no momento da criação do form, não no leilão. Aplicar UTM estático:
+**UTM estático em VIEW_WEBSITE/DOWNLOAD/BOOK_ON_WEBSITE (OBRIGATÓRIO):**
+
+Lead form NÃO suporta macros `{{campaign.name}}` — Meta resolve URL no momento da criação do form, não no leilão. Aplicar UTM estático em qualquer `website_url` desses 3 tipos:
 
 ```bash
 source "$CLAUDE_PLUGIN_ROOT/lib/utm.sh"
 
-if [[ "$button_type" == "VIEW_URL" || "$button_type" == "DOWNLOAD" ]]; then
+if [[ "$button_type" == "VIEW_WEBSITE" || "$button_type" == "DOWNLOAD" || "$button_type" == "BOOK_ON_WEBSITE" ]]; then
   if is_external_url "$website_url"; then
     today=$(date +%Y%m%d)
     slug=$(slugify "$form_name")
@@ -201,18 +235,39 @@ fi
 
 Resultado: `https://seusite.com/obrigado?utm_source=meta-leadform&utm_medium=trafego-pago&utm_campaign=20260424_form-clinica`
 
-Payload:
+**Payload por tipo** (exemplos completos — `<...>` é placeholder a preencher):
+
 ```json
-{
-  "thank_you_page": {
-    "title": "Recebemos!",
-    "body": "Nossa equipe entra em contato.",
-    "button_type": "CALL",
-    "button_text": "Ligar agora",
-    "country_code": "BR",
-    "phone_number": "55..."
-  }
-}
+NONE:
+{"thank_you_page": {"title":"<título>","body":"<descrição>","button_type":"NONE"}}
+
+VIEW_WEBSITE:
+{"thank_you_page": {"title":"<título>","body":"<descrição>","button_type":"VIEW_WEBSITE",
+  "button_text":"<texto do botão>","website_url":"<url com UTM estático>"}}
+
+VIEW_ON_FACEBOOK:
+{"thank_you_page": {"title":"<título>","body":"<descrição>","button_type":"VIEW_ON_FACEBOOK",
+  "button_text":"<texto do botão>"}}
+
+CALL_BUSINESS:
+{"thank_you_page": {"title":"<título>","body":"<descrição>","button_type":"CALL_BUSINESS",
+  "button_text":"<texto do botão>","business_phone_number":"<+5511987654321>","country_code":"<BR>"}}
+
+DOWNLOAD:
+{"thank_you_page": {"title":"<título>","body":"<descrição>","button_type":"DOWNLOAD",
+  "button_text":"<texto do botão>","website_url":"<url do arquivo com UTM estático>"}}
+
+WHATSAPP (recomendado pro funil — número explícito):
+{"thank_you_page": {"title":"<título>","body":"<descrição>","button_type":"WHATSAPP",
+  "button_text":"<texto do botão>","business_phone_number":"<+5511987654321>","country_code":"<BR>"}}
+
+PROMO_CODE:
+{"thank_you_page": {"title":"<título>","body":"<descrição>","button_type":"PROMO_CODE",
+  "button_text":"<texto do botão>"}}
+
+BOOK_ON_WEBSITE:
+{"thank_you_page": {"title":"<título>","body":"<descrição>","button_type":"BOOK_ON_WEBSITE",
+  "button_text":"<texto do botão>","website_url":"<url de agenda com UTM estático>"}}
 ```
 
 ### Passo 8 — Thank you screen DESQUALIFICADO (OBRIGATÓRIO — FIX BUG #8)
@@ -224,20 +279,36 @@ Usuário que NÃO passou no filtro (desqualificado) vai ver:
 
 Título: ____ (ex: "Obrigado pelo interesse!")
 Descrição: ____ (ex: "Nesse momento não temos vagas pro seu perfil. Siga no IG.")
-CTA distinto do qualificado:
-  [1] Visitar Instagram / outra rede
-  [2] Sem CTA (só a mensagem)
+
+CTA button — MESMO leque de 8 tipos aceitos do Passo 7 (NONE, VIEW_WEBSITE,
+VIEW_ON_FACEBOOK, CALL_BUSINESS, DOWNLOAD, WHATSAPP, PROMO_CODE, BOOK_ON_WEBSITE
+— campos obrigatórios e payloads idênticos aos do Passo 7), com uma regra extra:
+
+**CTA distinto do qualificado.** O button_type do desqualificado não pode repetir
+o do qualificado (ex.: qualificado = WHATSAPP → desqualificado tipicamente
+VIEW_WEBSITE pro Instagram/site institucional, VIEW_ON_FACEBOOK, ou NONE).
+
+Mesmas restrições do Passo 7 valem aqui: MESSAGE_BUSINESS e SCHEDULE_APPOINTMENT
+continuam rejeitados pela API; P2B_MESSENGER continua [não verificado ao vivo].
 ```
 
-**UTM estático aqui também:** mesmo `build_utm_url_static` usado no passo 7, com slug derivado do form_name. Aplica em qualquer `website_url` externa do CTA desqualificado.
+Client-side check do CTA distinto (antes do POST):
+```bash
+qual_type=$(echo "$payload" | jq -r '.thank_you_page.button_type')
+disq_type=$(echo "$payload" | jq -r '.disqualified_thank_you_page.button_type')
+[[ "$qual_type" != "$disq_type" ]] \
+  || { echo "✗ CTA do desqualificado precisa ser diferente do qualificado"; exit 1; }
+```
 
-Payload:
+**UTM estático aqui também:** mesmo `build_utm_url_static` usado no Passo 7, com slug derivado do form_name. Aplica em qualquer `website_url` dos tipos VIEW_WEBSITE/DOWNLOAD/BOOK_ON_WEBSITE do CTA desqualificado.
+
+Payload (exemplo — VIEW_WEBSITE pro Instagram):
 ```json
 {
   "disqualified_thank_you_page": {
     "title": "Obrigado!",
     "body": "Siga nosso Instagram",
-    "button_type": "VIEW_URL",
+    "button_type": "VIEW_WEBSITE",
     "button_text": "Ir pro Instagram",
     "website_url": "https://instagram.com/foo?utm_source=meta-leadform&utm_medium=trafego-pago&utm_campaign=20260424_form-clinica"
   }
