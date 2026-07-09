@@ -58,7 +58,7 @@ graph_api GET "act_${AD_ACCOUNT_ID#act_}/adspixels?fields=name,id,last_fired_tim
 > seção 10).
 
 ```bash
-payload=$(jq -nc --arg n "nome-do-pixel" '{name:$n}')
+payload=$(jq -nc --arg n "<nome-do-pixel>" '{name:$n}')
 graph_api POST "act_${AD_ACCOUNT_ID#act_}/adspixels" "$payload"
 # → {"id": "<pixel_id>"}
 ```
@@ -66,7 +66,7 @@ graph_api POST "act_${AD_ACCOUNT_ID#act_}/adspixels" "$payload"
 **Obter o código de instalação (snippet):**
 
 ```bash
-graph_api GET "{pixel_id}?fields=name,code"
+graph_api GET "${pixel_id}?fields=name,code"
 ```
 
 O campo `code` traz o snippet JavaScript completo pra colar no `<head>` do
@@ -76,7 +76,7 @@ WordPress etc. costumam ter integração nativa via `pixel_id`).
 **Verificar se o pixel está disparando:**
 
 ```bash
-graph_api GET "{pixel_id}?fields=last_fired_time"
+graph_api GET "${pixel_id}?fields=last_fired_time"
 ```
 
 - `last_fired_time` ausente ou vazio → pixel ainda não recebeu nenhum evento
@@ -690,6 +690,18 @@ Lookalike a ser criado:
 ├── Tamanho da origem: ~1.200 membros ✓ (mínimo 100)
 ├── Similaridade: 1%
 └── País: Brasil (BR)
+
+Confirma criação? (s/n)
+```
+
+Para Pixel (seção 1.1):
+
+```
+Pixel a ser criado:
+├── Nome: <nome-do-pixel>
+├── Conta: act_<ad_account_id>
+├── ⚠ Criação é PERMANENTE (pixel não tem DELETE)
+└── Próximo passo: instalar o snippet no site (GET ${pixel_id}?fields=code)
 
 Confirma criação? (s/n)
 ```

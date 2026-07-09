@@ -144,7 +144,7 @@ Se múltiplos resultados por categoria → pergunta qual é principal.
 
 - `N` (default) → segue o setup sem pixel; `pixel_id` fica comentado no
   CLAUDE.md (Passo 11).
-- `s` → pede um nome (sugestão: nome do projeto/cliente, ex. `nome-do-cliente`),
+- `s` → pede um nome (sugestão: nome do projeto/cliente, ex. `<nome-do-cliente>`),
   confirma (ação **permanente** — pixel não tem DELETE na API, ver
   `flows/publicos/SKILL.md` seção 1.1) e cria:
 
