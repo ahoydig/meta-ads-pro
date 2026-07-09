@@ -290,6 +290,25 @@ test_05_carousel() {
     || _fail "test_05_carousel" "GET round-trip falhou: $got"
   echo "$got" | jq -e '(.object_story_spec.link_data.child_attachments | length) == 3' >/dev/null \
     || _fail "test_05_carousel" "child_attachments ausente ou length != 3: $got"
+  # Round-trip POR CAMPO (fix pós-review, precedente da T15: a API desta área já
+  # dropou campo em silêncio com 201). Cada cartão: name/description/image_hash
+  # com igualdade EXATA contra o enviado; link com prefixo (startswith) + a
+  # presença do utm_campaign — é o link que carrega o UTM por cartão, então
+  # truncamento/drop dele é exatamente o que este assert pega. Observado ao
+  # vivo: os links dos cartões voltam byte-idênticos ao enviado (só o `link`
+  # principal sem path ganha "/" — ahoy.digital → ahoy.digital/).
+  echo "$got" | jq -e --arg h "$hash" '
+    .object_story_spec.link_data.child_attachments as $c |
+    ($c[0].name == "Card 1" and $c[0].description == "Desc 1" and $c[0].image_hash == $h
+      and ($c[0].link | startswith("https://ahoy.digital/a?"))
+      and ($c[0].link | contains("utm_campaign=test_carousel"))) and
+    ($c[1].name == "Card 2" and $c[1].description == "Desc 2" and $c[1].image_hash == $h
+      and ($c[1].link | startswith("https://ahoy.digital/b?"))
+      and ($c[1].link | contains("utm_campaign=test_carousel"))) and
+    ($c[2].name == "Card 3" and $c[2].description == "Desc 3" and $c[2].image_hash == $h
+      and ($c[2].link | startswith("https://ahoy.digital/c?"))
+      and ($c[2].link | contains("utm_campaign=test_carousel")))' >/dev/null \
+    || _fail "test_05_carousel" "campo de cartão divergente do enviado no round-trip: $got"
   _pass "test_05_carousel (cid=$cid)"
 }
 

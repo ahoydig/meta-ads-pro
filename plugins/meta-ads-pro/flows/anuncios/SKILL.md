@@ -447,7 +447,7 @@ Pra cada combo (imagem/vídeo + copy) em Normal, OU uma única vez em Dinâmico:
 
 **Nunca** cria N×M ads em Dinâmico. Asset feed já combina automaticamente.
 
-**Se Carrossel (ambos app modes):** 1 único creative com
+**Se Carrossel (ambos modos):** 1 único creative com
 `object_story_spec.link_data.child_attachments` — payload completo, decisão de
 hash reusado vs. uploads distintos, e UTM por cartão na seção **Modo
 Carrossel** (acima, entre Passo 4 e Passo 5).
