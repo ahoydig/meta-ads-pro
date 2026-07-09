@@ -67,9 +67,9 @@ $ curl -sS "https://graph.facebook.com/v25.0/${PAGE_ID}/subscribed_apps?fields=s
 POST e de novo ao escrever este doc) — a subscrição não foi desfeita, conforme
 instrução: **ela fica ativa pra Task 10** (quando o receiver existir, os eventos de
 leadgen desta Página já vão começar a ser entregues assim que a URL de callback for
-configurada na Task 11). Até lá, a Meta vai tentar entregar e vai falhar silenciosamente
-(sem endpoint cadastrado ainda não há para onde entregar — a subscrição em si não
-depende da URL de callback estar configurada).
+configurada na Task 11). Até lá, **não há tentativa de entrega alguma** — sem URL de
+callback configurada no nível do app não existe destino cadastrado; a subscrição da
+Página em si não depende da URL de callback estar configurada e permanece válida.
 
 ## 4. Permissões: Standard vs Advanced Access
 
@@ -95,16 +95,19 @@ O que Standard vs Advanced significa, segundo a doc oficial
 > **Acesso avançado**: "As permissões com acesso avançado podem ser solicitadas de
 > qualquer usuário, e os recursos com acesso avançado ficam ativos para todos os
 > usuários." Necessário quando o app "será usado por pessoas que não têm uma função
-> nele". Desde fev/2023, "para ter acesso avançado, é preciso passar pela verificação da
-> empresa" e cada permissão é aprovada individualmente via App Review.
+> nele". Desde 1º/02/2023, apps que solicitam acesso avançado precisam estar conectados
+> a uma empresa verificada (paráfrase da mesma página), e cada permissão é aprovada
+> individualmente via App Review.
 
 **Leitura pro nosso caso** `[inferência, ancorada na doc acima + no painel]`: a Página
 `108356564252733` e a conta de anúncios já pertencem ao mesmo Business Manager do app
 ("BM - Ahoy Digital") e o usuário que controla ambos (Flávio) tem função no app — esse
 é exatamente o caso que **Standard Access já cobre** ("usuários que têm uma função no
-app"). Os testes acima (subscrição + leitura via `leads_retrieval` nos scopes do token,
-ver `check_scopes` em `preflight.sh:46-62`) confirmam isso funcionando em LIVE mode sem
-Advanced Access. **Advanced Access só vira necessário se/quando o Ahoy operar leadgen
+app"). O que os testes acima provam: a **subscrição** funciona em LIVE mode sem Advanced
+Access, e o scope `leads_retrieval` está presente no token (`check_scopes`,
+`preflight.sh:46-62`). A **leitura completa de um lead** (`GET {leadgen_id}?fields=field_data`)
+ainda não foi exercitada — não existe lead entregue por webhook; o teste ponta-a-ponta é
+o item 7 do checklist da Task 10. **Advanced Access só vira necessário se/quando o Ahoy operar leadgen
 para Páginas de clientes fora do BM Ahoy Digital** (cenário "Tech Provider" — app usado
 por gente sem função nele). Como a Verificação da empresa já está feita (🟢), falta só
 Verificação de acesso + Análise do app pra essa expansão futura — não é bloqueador
@@ -118,8 +121,8 @@ Business Account, Ad Account, Catalog). Tela tem exatamente dois campos: **"URL 
 callback"** e **"Verificar token"**, e um botão **"Verificar e salvar"**.
 
 Testado (sem salvar): digitei `https://webhooks.ahoy.digital/meta-leads` no campo URL de
-callback — aceito sem erro de formato, botão "Verificar e salvar" ficou habilitado assim
-que havería também um verify token preenchido. **Limpei o campo antes de sair da tela —
+callback — aceito sem erro de formato; o botão "Verificar e salvar" ficaria habilitado
+assim que houvesse também um verify token preenchido. **Limpei o campo antes de sair da tela —
 nada foi salvo** (não cliquei em "Verificar e salvar" nem em "Remover assinatura"),
 conforme instrução de não configurar ainda (o receiver da Task 9 não existe, e a Meta só
 salva a config se o `GET` de verificação responder `hub.challenge` corretamente).
