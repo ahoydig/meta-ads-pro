@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# tests/09-publicos.sh — CRUD de audiences no skill publicos (CP3, Task 3b.3.6 + Task 18)
+# tests/09-publicos.sh — CRUD de audiences no skill publicos (CP3, Task 3b.3.6 + Task 18/19)
 #
 # test_01/02: listagem mínima de custom/saved audiences (apenas GETs).
 # test_03:    saved_audiences POST — GUARD-RAIL (Task 18, ver comentário na função).
+# test_04:    pixel — criação via API, IDEMPOTENTE (Task 19, ver comentário na função).
 #
 # Skip gracioso quando META_ACCESS_TOKEN ausente.
 # Prefixo TEST_ + cleanup automático via trap (nunca deve ter nada pra limpar
-# hoje, já que o POST é rejeitado — ver test_03 — mas fica pronto caso vire
-# escrita real no futuro).
+# hoje, já que o POST de saved_audiences é rejeitado — ver test_03 — mas fica
+# pronto caso vire escrita real no futuro). Pixel (test_04) NÃO entra nesse
+# cleanup — pixel não tem DELETE na Graph API, ver comentário em test_04.
 # Compatível bash 3.2 (macOS).
 
 set -euo pipefail
@@ -113,9 +115,72 @@ test_03_saved_audience_create_guardrail() {
   fi
 }
 
+# ─── Test 04: Pixel — criação via API, IDEMPOTENTE (Task 19) ────────────────
+#
+# Diferente de saved_audiences (test_03), a criação de pixel NÃO é bloqueada
+# por capability — `POST act_{id}/adspixels` funciona normalmente pra este
+# app. Mas pixel não tem DELETE na Graph API, então o design de "cria +
+# cleanup no trap" do resto deste arquivo não serve aqui: cada rodada criaria
+# um pixel novo e a conta acumularia lixo pra sempre.
+#
+# Design adotado: no máximo 1 pixel de teste PERMANENTE na conta, com nome
+# FIXO (sem timestamp) — TEST_meta-ads-pro_pixel. O teste é idempotente:
+#   - Lista os pixels da conta. Se TEST_meta-ads-pro_pixel já existe →
+#     valida round-trip (GET {pixel_id}?fields=name,code — o campo `code`
+#     precisa vir com o snippet de instalação) e PASSA como "reutilizado".
+#     Nenhuma escrita acontece nesse braço.
+#   - Se NÃO existe → só cria se RUN_PIXEL_CREATE=1 for setado explicitamente
+#     (senão SKIP com instrução — protege contra criação acidental em CI/rodada
+#     casual). Cria via POST, valida id + round-trip, PASSA como "criado".
+#
+# Rodadas futuras (sem a env var, e com o pixel já existindo) sempre caem no
+# braço "reutilizado" — zero escrita, teste continua rodando pra sempre sem
+# acumular pixels novos.
+TEST_PIXEL_NAME="TEST_meta-ads-pro_pixel"
+
+test_04_pixel_lifecycle() {
+  local list_r existing_id pixel_id round_trip payload create_r code
+
+  list_r=$(graph_api GET "${AD_ACCOUNT_ID}/adspixels?fields=name,id") \
+    || { _fail "test_04_pixel_lifecycle" "graph_api falhou ao listar adspixels"; return; }
+
+  existing_id=$(echo "$list_r" | jq -r --arg n "$TEST_PIXEL_NAME" \
+    '.data[]? | select(.name == $n) | .id' | head -n1)
+
+  if [[ -n "$existing_id" ]]; then
+    round_trip=$(graph_api GET "${existing_id}?fields=name,code") \
+      || { _fail "test_04_pixel_lifecycle" "graph_api falhou no round-trip de ${existing_id}"; return; }
+    code=$(echo "$round_trip" | jq -r '.code // empty')
+    [[ -n "$code" ]] \
+      || { _fail "test_04_pixel_lifecycle" "round-trip sem campo 'code' (snippet de instalação) — resposta: $round_trip"; return; }
+    _pass "test_04_pixel_lifecycle (reutilizado — pixel_id=${existing_id}, code presente)"
+    return
+  fi
+
+  if [[ "${RUN_PIXEL_CREATE:-0}" != "1" ]]; then
+    _skip "test_04_pixel_lifecycle" "${TEST_PIXEL_NAME} ainda não existe na conta — rode com RUN_PIXEL_CREATE=1 pra criar (uma vez só; pixel fica permanente, Graph API não tem DELETE pra adspixels)"
+    return
+  fi
+
+  payload=$(jq -nc --arg n "$TEST_PIXEL_NAME" '{name:$n}')
+  create_r=$(graph_api POST "${AD_ACCOUNT_ID}/adspixels" "$payload") \
+    || { _fail "test_04_pixel_lifecycle" "graph_api falhou ao criar pixel"; return; }
+  pixel_id=$(echo "$create_r" | jq -r '.id // empty')
+  [[ -n "$pixel_id" ]] \
+    || { _fail "test_04_pixel_lifecycle" "criação não retornou id: $create_r"; return; }
+
+  round_trip=$(graph_api GET "${pixel_id}?fields=name,code") \
+    || { _fail "test_04_pixel_lifecycle" "graph_api falhou no round-trip pós-criação de ${pixel_id}"; return; }
+  code=$(echo "$round_trip" | jq -r '.code // empty')
+  [[ -n "$code" ]] \
+    || { _fail "test_04_pixel_lifecycle" "round-trip pós-criação sem campo 'code' — resposta: $round_trip"; return; }
+  _pass "test_04_pixel_lifecycle (criado — pixel_id=${pixel_id}, code presente)"
+}
+
 test_01_list_custom_audiences
 test_02_list_saved_audiences
 test_03_saved_audience_create_guardrail
+test_04_pixel_lifecycle
 
 echo ""
 echo "09-publicos: $PASS passou, $FAIL falhou, $SKIP pulados"

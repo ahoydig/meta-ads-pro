@@ -135,6 +135,28 @@ graph_api GET "${account_id}/connected_instagram_accounts?fields=username,id,fol
 
 Se múltiplos resultados por categoria → pergunta qual é principal.
 
+**Se `adspixels` retornar 0 pixels:**
+
+> Nenhum pixel encontrado nesta conta. Sem pixel, públicos de tipo Website
+> (visitantes do site, eventos como Lead/Purchase) não podem ser criados.
+>
+> Criar pixel agora? [s/N]
+
+- `N` (default) → segue o setup sem pixel; `pixel_id` fica comentado no
+  CLAUDE.md (Passo 11).
+- `s` → pede um nome (sugestão: nome do projeto/cliente, ex. `nome-do-cliente`),
+  confirma (ação **permanente** — pixel não tem DELETE na API, ver
+  `flows/publicos/SKILL.md` seção 1.1) e cria:
+
+  ```bash
+  payload=$(jq -nc --arg n "$PIXEL_NAME" '{name:$n}')
+  pixel_id=$(graph_api POST "act_${account_id#act_}/adspixels" "$payload" | jq -r .id)
+  ```
+
+  Salva `pixel_id` no CLAUDE.md (Passo 11, campo não fica mais comentado) e
+  mostra o `code` de instalação (`GET {pixel_id}?fields=code`) pro usuário
+  colar no site.
+
 ### Passo 9 — Ler timezone/currency/min_daily_budget da API
 
 **Não hardcode** (fix de inconsistência CLAUDE.md):
@@ -174,6 +196,11 @@ Se [3]:
 
 ### Passo 11 — Salvar CLAUDE.md + criar .meta-ads-initialized
 
+Se um pixel existia (Passo 8) **ou** foi criado no Passo 8 (fluxo "Criar pixel
+agora?"), grava `pixel_id` normal. Se a conta seguiu sem pixel (usuário
+respondeu `N`), o campo fica **comentado** — sinaliza pro resto do plugin que
+públicos de tipo Website não estão disponíveis até um pixel existir.
+
 ```markdown
 ## Meta Ads Config
 ad_account_id: act_XXXXX
@@ -181,7 +208,7 @@ ad_account_name: Nome
 page_id: XXXXX
 page_name: Nome Página
 instagram_user_id: 17841XXXXX
-pixel_id: XXXXX  # ou comentado se sem pixel
+pixel_id: XXXXX
 currency: BRL
 timezone: America/Recife
 min_daily_budget: 518  # valor real da API
@@ -190,6 +217,12 @@ nomenclatura_template_campanha: "[{TIPO}][{PRODUTO}][{OPT}]"  # se custom
 nomenclatura_template_adset: "{NN} - {PUBLICO}"
 nomenclatura_template_ad: "AD {NN} - {FORMATO}"
 nomenclatura_uppercase: true
+```
+
+Se seguiu sem pixel, o campo vai comentado no lugar de `pixel_id: XXXXX`:
+
+```markdown
+# pixel_id:  # nenhum pixel — rodar setup de novo, ou criar via flows/publicos/SKILL.md seção 1.1
 ```
 
 Cria flag:

@@ -29,6 +29,66 @@ Gerencia todos os tipos de audiences no Meta Ads: Custom Audiences (website, eng
 | Deletar | `{audience_id}` | DELETE |
 | Listar saved audiences | `act_{id}/saved_audiences` | GET |
 | Criar saved audience | `act_{id}/saved_audiences` | POST — **bloqueado hoje pra este app** (ver seção 2.6) |
+| Listar pixels | `act_{id}/adspixels?fields=name,id,last_fired_time` | GET |
+| Criar pixel | `act_{id}/adspixels` | POST — **permanente, sem DELETE** (ver seção 1.1) |
+| Código de instalação do pixel | `{pixel_id}?fields=code` | GET |
+| Verificar disparo do pixel | `{pixel_id}?fields=last_fired_time` | GET |
+
+---
+
+### 1.1 Pixel — criar, instalar, verificar disparo
+
+O Pixel do Meta é o objeto que alimenta as audiences de tipo **Website** (seção
+2.1) — precisa existir antes de qualquer Custom Audience baseada em URL/evento
+de site. Diferente de Custom/Saved Audience, o pixel **não tem endpoint
+DELETE** na Graph API: uma vez criado, fica na conta permanentemente (só dá
+pra arquivar/parar de usar manualmente no Events Manager, não apagar pela
+API).
+
+**Listar pixels existentes (sempre checar antes de criar):**
+
+```bash
+graph_api GET "act_${AD_ACCOUNT_ID#act_}/adspixels?fields=name,id,last_fired_time"
+```
+
+**Criar pixel:**
+
+> **Atenção — ação permanente.** Criar um pixel não pode ser desfeito via API.
+> Sempre confirme o nome com o usuário antes do POST (padrão de confirmação da
+> seção 10).
+
+```bash
+payload=$(jq -nc --arg n "nome-do-pixel" '{name:$n}')
+graph_api POST "act_${AD_ACCOUNT_ID#act_}/adspixels" "$payload"
+# → {"id": "<pixel_id>"}
+```
+
+**Obter o código de instalação (snippet):**
+
+```bash
+graph_api GET "{pixel_id}?fields=name,code"
+```
+
+O campo `code` traz o snippet JavaScript completo pra colar no `<head>` do
+site (ou instalar via Google Tag Manager / plataforma do cliente — Shopify,
+WordPress etc. costumam ter integração nativa via `pixel_id`).
+
+**Verificar se o pixel está disparando:**
+
+```bash
+graph_api GET "{pixel_id}?fields=last_fired_time"
+```
+
+- `last_fired_time` ausente ou vazio → pixel ainda não recebeu nenhum evento
+  (instalação pendente ou não publicada).
+- `last_fired_time` presente → confirma que o snippet está instalado e
+  recebendo tráfego.
+
+Pra depurar em tempo real durante a instalação, orientar o usuário a abrir o
+**Events Manager** (business.facebook.com/events_manager) → selecionar o
+pixel → aba **Test Events** → navegar no site em outra aba: os eventos
+aparecem ao vivo, o que é mais rápido pra validar do que esperar
+`last_fired_time` atualizar.
 
 ---
 
