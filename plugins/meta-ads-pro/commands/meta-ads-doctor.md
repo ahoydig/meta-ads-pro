@@ -1,8 +1,8 @@
 ---
-description: "Diagnóstico completo do ambiente Meta Ads. Roda 10 checks (token, scopes, app mode, rate limit, ad account, page token, pixel, CLAUDE.md, learnings) e propõe fixes automáticos com --fix."
+description: "Diagnóstico completo do ambiente Meta Ads. Roda 14 checks (token, scopes, app mode, rate limit, ad account, page token, pixel, CLAUDE.md, learnings, GHL/FluxiHub, receiver de leadgen, subscrição leadgen, dataset CAPI) e propõe fixes automáticos com --fix."
 ---
 
-Invoque skill `meta-ads-pro/doctor` rodando os 10 checks de `lib/preflight.sh` em sequência.
+Invoque skill `meta-ads-pro/doctor` rodando os 14 checks de `lib/preflight.sh` em sequência.
 
 Flags:
 - `--fix` aplica fixes automáticos onde possível

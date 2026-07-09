@@ -13,7 +13,7 @@ Configuração inicial do sistema Meta Ads. Executa uma vez por projeto.
 2. App Meta com acesso à Marketing API
 3. Scopes obrigatórios: `ads_management`, `ads_read`, `business_management`, `instagram_basic`, `leads_retrieval`, `pages_manage_ads`
 
-## Fluxo de execução (11 passos)
+## Fluxo de execução (11 passos + Passo 8.5 opcional)
 
 ### Passo 1 — Check .env
 
@@ -157,6 +157,62 @@ Se múltiplos resultados por categoria → pergunta qual é principal.
   mostra o `code` de instalação (`GET {pixel_id}?fields=code`) pro usuário
   colar no site.
 
+### Passo 8.5 — Integração opcional com GHL/FluxiHub
+
+Pergunta obrigatória de degrau (S/n) — mesmo padrão do Passo 10:
+
+```
+Integra com GHL/FluxiHub? [s/N]
+```
+
+- `N` (default) → segue o setup sem CRM. `GHL_LOCATION_ID`/`GHL_PIT_TOKEN` não
+  são gravados; `check_ghl`/`check_receiver` (doctor, checks 11/12) vão avisar
+  ⚠ (não bloqueiam) enquanto não configurados.
+- `s` → coleta os 3 valores, um de cada vez:
+
+  1. **`GHL_LOCATION_ID`** — ID da subconta (location) no GHL/FluxiHub que vai
+     receber os leads. Encontrado na URL do painel da subconta
+     (`app.<domínio>/location/<GHL_LOCATION_ID>/...`) ou em Configurações →
+     Informações da empresa.
+  2. **`GHL_PIT_TOKEN`** — Private Integration Token gerado **dentro da própria
+     subconta** (não é o token de agência/API key global):
+     > 1. Na subconta (location) → Configurações → Private Integrations
+     > 2. Criar Integração Privada → nome (ex: `meta-ads-pro`)
+     > 3. Marque os scopes de leitura/escrita de contatos necessários pro fluxo
+     >    de leads (ex: `contacts.readonly`, `contacts.write`)
+     > 4. Gerar → COPIE AGORA (não vai ver de novo) → cole aqui
+  3. **`RECEIVER_HEALTH_URL`** — URL de health check do receiver de leadgen
+     (webhook que recebe os leads do Meta e injeta no GHL). Default sugerido,
+     aceita Enter pra usar como está:
+     `https://webhooks.ahoy.digital/meta-leads/health`
+
+  Grava os 3 no `.env`, com o **mesmo padrão .gitignore-first do Passo 5**
+  (`.gitignore` checado/atualizado ANTES de qualquer write):
+
+  ```bash
+  # 1. .gitignore antes de qualquer write (idempotente — já deve estar lá do Passo 5)
+  touch .gitignore
+  grep -qxF '.env' .gitignore || echo '.env' >> .gitignore
+
+  # 2. Escreve .env (heredoc com 'EOF' pra não interpolar)
+  cat >> .env <<'EOF'
+  GHL_LOCATION_ID=COLE_LOCATION_ID_AQUI
+  GHL_PIT_TOKEN=COLE_PIT_TOKEN_AQUI
+  RECEIVER_HEALTH_URL=https://webhooks.ahoy.digital/meta-leads/health
+  EOF
+  sed -i.bak "s|COLE_LOCATION_ID_AQUI|${GHL_LOCATION_ID}|" .env
+  sed -i.bak "s|COLE_PIT_TOKEN_AQUI|${GHL_PIT_TOKEN}|" .env
+  rm -f .env.bak
+
+  # 3. Carrega na sessão (nunca ecoar o token)
+  export GHL_LOCATION_ID=$(grep '^GHL_LOCATION_ID=' .env | cut -d'=' -f2-)
+  export GHL_PIT_TOKEN=$(grep '^GHL_PIT_TOKEN=' .env | cut -d'=' -f2-)
+  export RECEIVER_HEALTH_URL=$(grep '^RECEIVER_HEALTH_URL=' .env | cut -d'=' -f2-)
+  ```
+
+  Salva `ghl_location_id` no CLAUDE.md (Passo 11) — **`GHL_PIT_TOKEN` NUNCA vai
+  pro CLAUDE.md** (é secret, fica só no `.env`, igual `META_ACCESS_TOKEN`).
+
 ### Passo 9 — Ler timezone/currency/min_daily_budget da API
 
 **Não hardcode** (fix de inconsistência CLAUDE.md):
@@ -217,6 +273,7 @@ nomenclatura_template_campanha: "[{TIPO}][{PRODUTO}][{OPT}]"  # se custom
 nomenclatura_template_adset: "{NN} - {PUBLICO}"
 nomenclatura_template_ad: "AD {NN} - {FORMATO}"
 nomenclatura_uppercase: true
+ghl_location_id: XXXXX  # se integrou no Passo 8.5 — GHL_PIT_TOKEN NUNCA vai aqui
 ```
 
 Se seguiu sem pixel, o campo vai comentado no lugar de `pixel_id: XXXXX`:
@@ -224,6 +281,10 @@ Se seguiu sem pixel, o campo vai comentado no lugar de `pixel_id: XXXXX`:
 ```markdown
 # pixel_id:  # nenhum pixel — rodar setup de novo, ou criar via flows/publicos/SKILL.md seção 1.1
 ```
+
+Se não integrou com GHL/FluxiHub no Passo 8.5, `ghl_location_id` fica de fora
+do CLAUDE.md por completo (não comentado — só omitido; não há dependência de
+outros flows nesse campo, ao contrário do `pixel_id`).
 
 Cria flag:
 ```bash
@@ -233,6 +294,7 @@ touch .meta-ads-initialized
 ## Regras
 
 - NUNCA ecoar `$META_ACCESS_TOKEN` em output
+- NUNCA ecoar `$GHL_PIT_TOKEN` em output — igual ao token da Meta, fica só no `.env`, nunca no CLAUDE.md
 - `.gitignore` check SEMPRE antes do write do token
 - Re-rodar setup é idempotente (atualiza CLAUDE.md, não duplica)
 - Se token já existe, valida antes de perguntar novo
