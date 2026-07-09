@@ -82,3 +82,17 @@ print(s)
 is_external_url() {
   [[ "$1" =~ ^https?:// ]]
 }
+
+# build_tracking_parameters <form_name> [extra_json]
+# JSON de tracking pro campo tracking_parameters do lead form (volta grudado
+# em cada lead). Formato exato aceito pela API: ver docs/spikes/2026-07-leadform-avancado.md.
+build_tracking_parameters() {
+  local form_name="$1"
+  local extra="${2:-}"
+  [[ -z "$extra" ]] && extra='{}'
+  local slug today
+  slug=$(slugify "$form_name")
+  today=$(date +%Y%m%d)
+  jq -nc --arg c "${today}_${slug}" --argjson extra "$extra" \
+    '{utm_source:"meta-leadform", utm_medium:"trafego-pago", utm_campaign:$c} + $extra'
+}

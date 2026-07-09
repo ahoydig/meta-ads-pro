@@ -1,13 +1,26 @@
 #!/usr/bin/env bash
-# tests/08-lead-forms.sh — Camada 3: sub-skill lead-forms (12 testes)
+# tests/08-lead-forms.sh — Camada 3: sub-skill lead-forms (15 testes)
 #
 # Estratégia:
 #   - Testes 01-04 são client-side (validação pré-POST, sem token necessário)
 #   - Testes 05-07 são privacy-validator (requerem rede pra URL válida; skip se offline)
 #   - Testes 08-09 fazem POST real em /leadgen_forms (requer META_ACCESS_TOKEN + PAGE_ID)
-#   - Testes 10-12 são stubs pra CP3c (qualifier/conditional/preview)
+#   - Teste 10 faz POST real de form com pergunta qualificadora + round-trip via GET
+#     (requer META_ACCESS_TOKEN + PAGE_ID)
+#   - Teste 11 é guard-rail: reproduz a Tentativa 4 do spike (conditional_questions_group_id
+#     fake) e espera o MESMO erro documentado (code 100 + mensagem específica) — NÃO EXISTE
+#     confirmado (docs/spikes/2026-07-leadform-avancado.md, seção 3); requer META_ACCESS_TOKEN
+#     + PAGE_ID, mas não cria form (POST falha antes de criar objeto)
+#   - Teste 12 é client-side (preview_html.py via stdin, sem token/rede)
+#   - Teste 13 é client-side (build_tracking_parameters, lib/utm.sh)
+#   - Teste 14 faz POST real com tracking_parameters (requer META_ACCESS_TOKEN + PAGE_ID)
+#   - Teste 15 faz POST real com thank_you_page CTA WHATSAPP (número explícito) —
+#     regressão do CTA recomendado do funil (docs/spikes/2026-07-leadform-avancado.md,
+#     seção 5); requer META_ACCESS_TOKEN + PAGE_ID
 #
-# Cleanup: todos os forms criados vão pra array, DELETE no trap EXIT.
+# Cleanup: todos os forms criados vão pra array; ARCHIVED no trap EXIT (ver
+# _cleanup_forms — leadgen_forms NÃO suportam DELETE via Graph API, só
+# status=ARCHIVED com PAGE TOKEN; docs/spikes/2026-07-leadform-avancado.md).
 # Prefixo TEST_ garante cleanup via tests/cleanup.sh caso o trap falhe.
 
 set -euo pipefail
@@ -26,11 +39,39 @@ VALID_PRIVACY_URL="${VALID_PRIVACY_URL:-https://lp.ahoy.digital/politicas-privac
 
 created_forms=()
 _cleanup_forms() {
+  # leadgen_forms NÃO suportam DELETE via Graph API — confirmado ao vivo no spike
+  # (docs/spikes/2026-07-leadform-avancado.md, seção "Cleanup"): tanto com token
+  # de system user quanto com page token, DELETE devolve
+  # `"Unsupported delete request. ... code":100,"error_subcode":33`. O único
+  # mecanismo suportado é arquivar via POST {form_id}?status=ARCHIVED usando o
+  # PAGE TOKEN (não o token de usuário/system-user do .env) — mesmo padrão já
+  # usado em lib/rollback.sh:80. Sem esse fix, os forms de teste ficavam ACTIVE
+  # silenciosamente (o antigo `graph_api DELETE ... || true` sempre "funcionava"
+  # porque engolia o erro).
+  [[ "${#created_forms[@]:-0}" -gt 0 ]] || return 0
+  [[ -n "${META_ACCESS_TOKEN:-}" && -n "${PAGE_ID:-}" ]] || return 0
   # shellcheck source=../lib/graph_api.sh disable=SC1091
   source "$PLUGIN_ROOT/lib/graph_api.sh" 2>/dev/null || return 0
+
+  local page_token
+  # `|| page_token=""` — sob `set -euo pipefail`, se o graph_api emitir stdout
+  # não-JSON numa falha, o jq quebra o pipeline e o errexit mataria o trap ANTES
+  # do warning e do loop de arquivamento; o guard degrada pro check de vazio abaixo.
+  page_token=$(GRAPH_API_SKIP_RESOLVER=1 graph_api GET "${PAGE_ID}?fields=access_token" 2>/dev/null \
+    | jq -r '.access_token // empty') || page_token=""
+  if [[ -z "$page_token" ]]; then
+    echo "⚠ _cleanup_forms: sem page token — forms de teste ficam ACTIVE (arquive manualmente)" >&2
+    return 0
+  fi
+
   for fid in "${created_forms[@]:-}"; do
     [[ -n "$fid" && "$fid" != DRY_RUN_* ]] || continue
-    GRAPH_API_SKIP_RESOLVER=1 graph_api DELETE "$fid" >/dev/null 2>&1 || true
+    if curl -sS -X POST "https://graph.facebook.com/${META_API_VERSION:-v25.0}/${fid}" \
+      -d "status=ARCHIVED" -d "access_token=${page_token}" 2>/dev/null | jq -e '.success == true' >/dev/null; then
+      echo "✓ _cleanup_forms: $fid ARCHIVED" >&2
+    else
+      echo "⚠ _cleanup_forms: $fid não pôde ser arquivado" >&2
+    fi
   done
 }
 trap _cleanup_forms EXIT
@@ -40,6 +81,14 @@ _need_token() {
 }
 
 # ─── helper: payload mínimo válido ────────────────────────────────────────────
+# context_card.style e thank_you_page.button_type (+ disqualified_thank_you_page.
+# button_type) são OBRIGATÓRIOS nesta versão da API — achado do spike ao vivo
+# (docs/spikes/2026-07-leadform-avancado.md, seção 1). O payload mínimo original
+# (sem esses 2 campos) foi rejeitado ao vivo (reproduzido nesta sessão, Task 6,
+# antes deste fix) com `(#100) The parameter thank_you_page[button_type] is
+# required.`; corrigido esse, o spike bateu em
+# `(#100) Context card style is not provided`. `PARAGRAPH_STYLE` e `NONE` são os
+# valores mínimos válidos confirmados ao vivo no spike (payload da seção 1).
 build_minimal_form_payload() {
   local name
   name="TEST_$(date +%s)_$$_$RANDOM"
@@ -60,9 +109,9 @@ build_minimal_form_payload() {
         {type:"PHONE"}
       ],
       privacy_policy: {url: $privacy_url},
-      context_card: {title: $intro_title, content: [$intro_desc]},
-      thank_you_page: {title: $thankyou_title, body: $thankyou_desc},
-      disqualified_thank_you_page: {title: $disq_title, body: $disq_desc},
+      context_card: {title: $intro_title, content: [$intro_desc], style: "PARAGRAPH_STYLE"},
+      thank_you_page: {title: $thankyou_title, body: $thankyou_desc, button_type: "NONE"},
+      disqualified_thank_you_page: {title: $disq_title, body: $disq_desc, button_type: "NONE"},
       follow_up_action_url: $privacy_url
     }'
 }
@@ -167,6 +216,13 @@ test_07_privacy_valid_accepted() {
 }
 
 # ─── Test 08: short_answer question (live POST) ───────────────────────────────
+# `input_type` foi REMOVIDO do payload — achado ao vivo desta sessão (Task 6, fora
+# do escopo do spike de tracking_parameters, mas bloqueava a rodada 0-FAIL exigida):
+# `input_type` (qualquer valor, inclusive "SHORT_ANSWER") é chave inválida pra uma
+# pergunta CUSTOM de topo nesta versão da API — rejeitado com
+# `(#100) Invalid keys "input_type" were found in param "questions[N]"`. Sem
+# `options`, uma pergunta CUSTOM é short-answer por padrão (confirmado ao vivo:
+# mesmo payload sem `input_type` e sem `options` cria o form normalmente).
 test_08_short_answer_question() {
   if ! _need_token; then
     _skip "test_08_short_answer_question" "sem META_ACCESS_TOKEN/PAGE_ID"
@@ -177,7 +233,7 @@ test_08_short_answer_question() {
 
   local payload response fid
   payload=$(build_minimal_form_payload | jq \
-    '.questions += [{type:"CUSTOM", key:"interest", label:"Qual interesse?", input_type:"SHORT_ANSWER"}]')
+    '.questions += [{type:"CUSTOM", key:"interest", label:"Qual interesse?"}]')
   response=$(graph_api POST "${PAGE_ID}/leadgen_forms" "$payload") \
     || _fail "test_08_short_answer_question" "POST falhou: $response"
   fid=$(echo "$response" | jq -r '.id // empty')
@@ -187,6 +243,12 @@ test_08_short_answer_question() {
 }
 
 # ─── Test 09: multiple_choice question (live POST) ────────────────────────────
+# Mesmo achado do test_08 (`input_type` inválido) + um segundo achado ao vivo:
+# `options[]` SEM `key` por opção derruba o endpoint com erro 500 genérico
+# ("An unknown error has occurred", 2x reproduzido de forma determinística com
+# `options:[{value:"Opt1"},...]` sem `key`) — não é erro de validação (400), é
+# falha 500 do lado da Meta. Adicionando `key` em cada option (mesmo padrão já
+# usado no exemplo do Passo 5 do SKILL.md), o POST funciona sem `input_type`.
 test_09_multiple_choice_question() {
   if ! _need_token; then
     _skip "test_09_multiple_choice_question" "sem META_ACCESS_TOKEN/PAGE_ID"
@@ -201,8 +263,7 @@ test_09_multiple_choice_question() {
       type:"CUSTOM",
       key:"proc",
       label:"Procedimento?",
-      input_type:"MULTIPLE_CHOICE",
-      options:[{value:"Opt1"},{value:"Opt2"},{value:"Opt3"}]
+      options:[{value:"Opt1",key:"opt1"},{value:"Opt2",key:"opt2"},{value:"Opt3",key:"opt3"}]
     }]')
   response=$(graph_api POST "${PAGE_ID}/leadgen_forms" "$payload") \
     || _fail "test_09_multiple_choice_question" "POST falhou: $response"
@@ -212,17 +273,221 @@ test_09_multiple_choice_question() {
   _pass "test_09_multiple_choice_question (fid=$fid)"
 }
 
-# ─── Test 10-12: stubs pra CP3c ───────────────────────────────────────────────
-test_10_qualifier_disqualifier_stub() {
-  _skip "test_10_qualifier_disqualifier_stub" "implementação em CP3c (filtro qualifier por answer)"
+# ─── Test 10: qualifier/disqualifier question (live POST + round-trip) ───────
+# Meta NÃO tem um campo nativo de "esta opção qualifica/desqualifica" — isso é
+# client-side (a skill decide qual thank_you_page mostrar com base na resposta,
+# fora do payload do form; plano B validado no spike, seção 4). Este teste
+# confirma que um form com pergunta MULTIPLE_CHOICE usada como qualificadora
+# (options com key, mesmo padrão do test_09) + thank you dupla (builder já
+# garante) é aceito pela API, e faz round-trip via GET pra confirmar que
+# key/label/options da pergunta qualificadora persistem intactos.
+test_10_qualifier_disqualifier() {
+  if ! _need_token; then
+    _skip "test_10_qualifier_disqualifier" "sem META_ACCESS_TOKEN/PAGE_ID"
+    return 0
+  fi
+  # shellcheck source=../lib/graph_api.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/graph_api.sh"
+
+  local payload response fid
+  payload=$(build_minimal_form_payload | jq \
+    '.questions += [{
+      type:"CUSTOM",
+      key:"orcamento",
+      label:"Qual seu orçamento mensal?",
+      options:[{value:"Até R$ 1.000",key:"baixo"},{value:"Acima de R$ 5.000",key:"alto"}]
+    }]')
+  response=$(graph_api POST "${PAGE_ID}/leadgen_forms" "$payload") \
+    || _fail "test_10_qualifier_disqualifier" "POST falhou: $response"
+  fid=$(echo "$response" | jq -r '.id // empty')
+  [[ -n "$fid" ]] || _fail "test_10_qualifier_disqualifier" "sem id: $response"
+  created_forms+=("$fid")
+
+  local get_response
+  get_response=$(graph_api GET "${fid}?fields=id,questions") \
+    || _fail "test_10_qualifier_disqualifier" "GET pós-criação falhou"
+  echo "$get_response" | jq -e \
+    '.questions[] | select(.key == "orcamento")
+       | (.label == "Qual seu orçamento mensal?")
+         and ([.options[].key] == ["baixo","alto"])' >/dev/null \
+    || _fail "test_10_qualifier_disqualifier" \
+      "pergunta qualificadora não bateu no round-trip: $get_response"
+  _pass "test_10_qualifier_disqualifier (fid=$fid)"
 }
 
-test_11_conditional_logic_stub() {
-  _skip "test_11_conditional_logic_stub" "implementação em CP3c (B só se A=X via conditional_questions)"
+# ─── Test 11: conditional logic — guard-rail (NÃO EXISTE, spike §3/§4) ───────
+# Spike 2026-07 (docs/spikes/2026-07-leadform-avancado.md, seção 3, Tentativa 4):
+# `conditional_questions_group_id` é campo REAL (validado por schema, não por
+# "chave desconhecida"), mas exige um "LeadGen Conditional Questions Group"
+# pré-existente cujo endpoint de criação não é público. Este teste reproduz
+# LITERALMENTE o payload da Tentativa 4 do spike (mesmo group_id fake "1", mesma
+# posição questions[3] — build_minimal_form_payload já tem 3 perguntas base) e
+# espera o MESMO erro verbatim (code 100 + mensagem específica) — lição da
+# task 18: um erro diferente do documentado também é _fail, com diagnóstico,
+# pra não mascarar uma API que mudou de comportamento de um jeito não observado.
+test_11_conditional_logic() {
+  if ! _need_token; then
+    _skip "test_11_conditional_logic" "sem META_ACCESS_TOKEN/PAGE_ID"
+    return 0
+  fi
+  # shellcheck source=../lib/graph_api.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/graph_api.sh"
+
+  local payload response
+  payload=$(build_minimal_form_payload | jq \
+    '.questions += [{
+      type:"CUSTOM",
+      key:"procedimento",
+      label:"Qual procedimento?",
+      options:[{value:"Estética",key:"est"},{value:"Ortodontia",key:"orto"}],
+      conditional_questions_group_id:"1",
+      dependent_conditional_questions:[{
+        name:"tipo_estetica",
+        field_key:"tipo_est",
+        input_type:"CONDITIONAL_SELECT",
+        conditional_questions_group_id:"1"
+      }]
+    }]')
+
+  if response=$(GRAPH_API_SKIP_RESOLVER=1 graph_api POST "${PAGE_ID}/leadgen_forms" "$payload" 2>&1); then
+    # API aceitou — comportamento mudou desde o spike. Não mascarar: arquiva o
+    # form criado (se veio id) e falha com instrução explícita de atualização.
+    local accidental_fid
+    accidental_fid=$(echo "$response" | jq -r '.id // empty' 2>/dev/null || echo "")
+    [[ -n "$accidental_fid" ]] && created_forms+=("$accidental_fid")
+    _fail "test_11_conditional_logic" \
+      "API passou a aceitar conditional_questions_group_id fake — atualizar SKILL.md e o spike (docs/spikes/2026-07-leadform-avancado.md, seção 3)! response: $response"
+  fi
+
+  # Falhou (esperado) — mas precisa ser o MESMO erro documentado, não "qualquer erro".
+  local err_code err_msg
+  err_code=$(echo "$response" | jq -r '.error.code // empty' 2>/dev/null) || err_code=""
+  err_msg=$(echo "$response" | jq -r '.error.message // empty' 2>/dev/null) || err_msg=""
+  if [[ "$err_code" != "100" ]] || [[ "$err_msg" != *"not a valid LeadGen Conditional Questions Group ID"* ]]; then
+    _fail "test_11_conditional_logic" \
+      "erro diferente do documentado no spike (esperado code=100 + \"not a valid LeadGen Conditional Questions Group ID\"): code=$err_code msg=$err_msg raw=$response"
+  fi
+  _pass "test_11_conditional_logic (limitação confirmada: code=$err_code, plano B documentado)"
 }
 
-test_12_preview_html_stub() {
-  _skip "test_12_preview_html_stub" "implementação em CP3c (visual-preview HTML interativo do form)"
+# ─── Test 12: preview_html.py (client-side, sem token/rede) ───────────────────
+# lib/_py/preview_html.py é puro client-side: lê JSON via stdin no formato
+# {"level":"leadform","payload":{...}} e escreve HTML auto-contido em stdout —
+# zero rede, zero token. Roda sempre, mesmo sem META_ACCESS_TOKEN/PAGE_ID.
+test_12_preview_html() {
+  local title="TEST Preview Lead Form $$"
+  local payload out_file
+  payload=$(jq -nc --arg title "$title" \
+    '{
+      level: "leadform",
+      payload: {
+        name: $title,
+        intro: {title: "Antes de começar", description: "Leia com atenção"},
+        questions: [{label: "Nome completo"}, {label: "E-mail"}, {label: "Qual procedimento?"}],
+        privacy_policy_url: "https://lp.ahoy.digital/politicas-privacidade"
+      }
+    }')
+  out_file=$(mktemp)
+  echo "$payload" | python3 "$PLUGIN_ROOT/lib/_py/preview_html.py" > "$out_file" \
+    || _fail "test_12_preview_html" "preview_html.py falhou (rc≠0)"
+  [[ -s "$out_file" ]] || _fail "test_12_preview_html" "arquivo HTML gerado veio vazio"
+  grep -qF "$title" "$out_file" \
+    || _fail "test_12_preview_html" "título do form não apareceu no HTML gerado"
+  rm -f "$out_file"
+  _pass "test_12_preview_html"
+}
+
+# ─── Test 13: build_tracking_parameters gera JSON válido ──────────────────────
+test_13_build_tracking_parameters() {
+  # shellcheck source=../lib/utm.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/utm.sh"
+  local out
+  out=$(build_tracking_parameters "Form Clínica São João") \
+    || _fail "test_13_build_tracking_parameters" "função falhou"
+  echo "$out" | jq -e '.utm_source == "meta-leadform" and .utm_medium == "trafego-pago"' >/dev/null \
+    || _fail "test_13_build_tracking_parameters" "campos base errados: $out"
+  echo "$out" | jq -re '.utm_campaign' | grep -Eq '^[0-9]{8}_form-clinica-sao-joao$' \
+    || _fail "test_13_build_tracking_parameters" "utm_campaign fora do padrão: $out"
+  # merge de extras
+  out=$(build_tracking_parameters "X" '{"utm_content":"boost"}')
+  echo "$out" | jq -e '.utm_content == "boost"' >/dev/null \
+    || _fail "test_13_build_tracking_parameters" "merge de extras falhou: $out"
+  _pass "test_13_build_tracking_parameters"
+}
+
+# ─── Test 14: form criado com tracking_parameters (live) ──────────────────────
+# Formato confirmado no spike (docs/spikes/2026-07-leadform-avancado.md, seção 1):
+# tracking_parameters aceita objeto JSON {chave: valor} no POST (--argjson é a
+# forma correta) e volta como array [{key,value}] no GET — round-trip validado
+# ao vivo lá, reconfirmado aqui.
+test_14_tracking_parameters_roundtrip() {
+  if ! _need_token; then
+    _skip "test_14_tracking_parameters_roundtrip" "sem META_ACCESS_TOKEN/PAGE_ID"; return 0
+  fi
+  # shellcheck source=../lib/graph_api.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/graph_api.sh"
+  # shellcheck source=../lib/utm.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/utm.sh"
+  local tp payload response fid
+  tp=$(build_tracking_parameters "TEST tracking")
+  payload=$(build_minimal_form_payload | jq --argjson tp "$tp" '. + {tracking_parameters:$tp}')
+  response=$(graph_api POST "${PAGE_ID}/leadgen_forms" "$payload") \
+    || _fail "test_14_tracking_parameters_roundtrip" "POST falhou: $response"
+  fid=$(echo "$response" | jq -r '.id // empty')
+  created_forms+=("$fid")
+  local get_response
+  get_response=$(graph_api GET "${fid}?fields=id,tracking_parameters") \
+    || _fail "test_14_tracking_parameters_roundtrip" "GET pós-criação falhou"
+  # roundtrip de verdade: as CHAVES enviadas no objeto voltam no array [{key,value}]
+  echo "$get_response" | jq -e \
+    '[.tracking_parameters[].key] | contains(["utm_source","utm_medium","utm_campaign"])' >/dev/null \
+    || _fail "test_14_tracking_parameters_roundtrip" "chaves enviadas não voltaram no GET: $get_response"
+  _pass "test_14_tracking_parameters_roundtrip (fid=$fid)"
+}
+
+# ─── Test 15: thank_you_page CTA WHATSAPP com número explícito (live) ─────────
+# Regressão do CTA recomendado pro funil (docs/spikes/2026-07-leadform-avancado.md,
+# seção 5): WHATSAPP aceita business_phone_number (E.164) + country_code (alpha-2)
+# opcionais mas juntos — round-trip via GET confirma os dois persistidos. O
+# disqualified_thank_you_page fica com button_type NONE (já é o default de
+# build_minimal_form_payload, mantido explícito aqui pra documentar a intenção).
+test_15_thankyou_whatsapp_cta() {
+  if ! _need_token; then
+    _skip "test_15_thankyou_whatsapp_cta" "sem META_ACCESS_TOKEN/PAGE_ID"; return 0
+  fi
+  # shellcheck source=../lib/graph_api.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/graph_api.sh"
+
+  local payload response fid
+  payload=$(build_minimal_form_payload | jq \
+    '.thank_you_page = {
+       title: "Obrigado!",
+       body: "Em contato via WhatsApp",
+       button_type: "WHATSAPP",
+       button_text: "Chamar no WhatsApp",
+       business_phone_number: "+5591999999999",
+       country_code: "BR"
+     }
+     | .disqualified_thank_you_page = {
+       title: "Não elegível",
+       body: "Siga nosso IG",
+       button_type: "NONE"
+     }')
+  response=$(graph_api POST "${PAGE_ID}/leadgen_forms" "$payload") \
+    || _fail "test_15_thankyou_whatsapp_cta" "POST falhou: $response"
+  fid=$(echo "$response" | jq -r '.id // empty')
+  [[ -n "$fid" ]] || _fail "test_15_thankyou_whatsapp_cta" "sem id no response: $response"
+  created_forms+=("$fid")
+
+  local get_response
+  get_response=$(graph_api GET "${fid}?fields=id,thank_you_page") \
+    || _fail "test_15_thankyou_whatsapp_cta" "GET pós-criação falhou"
+  echo "$get_response" | jq -e \
+    '.thank_you_page.button_type == "WHATSAPP"
+       and .thank_you_page.business_phone_number == "+5591999999999"
+       and .thank_you_page.country_code == "BR"' >/dev/null \
+    || _fail "test_15_thankyou_whatsapp_cta" "round-trip não bateu: $get_response"
+  _pass "test_15_thankyou_whatsapp_cta (fid=$fid)"
 }
 
 # ─── Execução ─────────────────────────────────────────────────────────────────
@@ -235,9 +500,12 @@ test_06_privacy_404_rejected
 test_07_privacy_valid_accepted
 test_08_short_answer_question
 test_09_multiple_choice_question
-test_10_qualifier_disqualifier_stub
-test_11_conditional_logic_stub
-test_12_preview_html_stub
+test_10_qualifier_disqualifier
+test_11_conditional_logic
+test_12_preview_html
+test_13_build_tracking_parameters
+test_14_tracking_parameters_roundtrip
+test_15_thankyou_whatsapp_cta
 
 echo ""
 echo "lead-forms: ${PASS} passou, ${FAIL} falhou, ${SKIP} pulados"
