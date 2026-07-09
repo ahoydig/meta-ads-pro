@@ -28,14 +28,11 @@ GHL_PIT_TOKEN=...          # Private Integration Token (Settings → Private Int
 RECEIVER_HEALTH_URL=https://webhooks.ahoy.digital/meta-leads/health   # default
 ```
 
-Essas 3 env são coletadas no **setup** (`flows/setup/SKILL.md`, Passo 8.5 — pergunta
+Essas 3 env são coletadas no **setup** (`flows/setup/SKILL.md:184`, Passo 8.5 — pergunta
 opcional "Integra com GHL/FluxiHub? [s/N]"), gravadas no `.env` no mesmo padrão
-gitignore-first do resto do plugin. **Não duplicar aqui** o fluxo de coleta — a spec
-completa do Passo 8.5 está em
-`docs/superpowers/plans/2026-07-09-upgrade-v1.1-operacao-ahoy.md` (Task 21, Step 2).
-`[não verificado neste worktree]` — o Passo 8.5 ainda não existia em
-`flows/setup/SKILL.md` no momento desta task (Track A); confirme que mesclou antes de
-assumir que o setup já pergunta isso.
+gitignore-first do resto do plugin. **Não duplicar aqui** o fluxo de coleta — o Passo
+8.5 já existe e já cobre os 3 valores (`GHL_LOCATION_ID`, `GHL_PIT_TOKEN`,
+`RECEIVER_HEALTH_URL`), um de cada vez, com o mesmo default (`N` → segue sem CRM).
 
 `GHL_PIT_TOKEN` **nunca** vai pro `CLAUDE.md` (só env/`.env`) — mesma regra do
 `META_ACCESS_TOKEN`.
@@ -135,12 +132,11 @@ fi
 `{PAGE_ID}/subscribed_apps` **não** aceitou o token de sistema/usuário (`META_ACCESS_TOKEN`)
 nesta conta — precisou do **page token derivado** (`{PAGE_ID}?fields=access_token`),
 mesmo padrão de `tests/08-lead-forms.sh::_cleanup_forms` e do spike
-`docs/spikes/2026-07-webhook-leadgen.md`, seção 3. O rascunho de `check_leadgen_subscription`
-no plano v1.1 (Task 21) usa `graph_api GET` direto, sem derivar page token — **atualizar
-esse rascunho pra derivar page token** quando a Task 21 for implementada, senão o check
-21-13 vai reportar falso-negativo. Página `108356564252733` confirmada subscrita em
-`leadgen` nesta sessão (3ª+ confirmação — já tinha sido validado no spike T4 e no
-`RUNBOOK.md` §9).
+`docs/spikes/2026-07-webhook-leadgen.md`, seção 3. `check_leadgen_subscription`
+(`lib/preflight.sh:259-276`, check 13) já deriva o page token do mesmo jeito — não é
+mais rascunho, é o código real do doctor, evitando o falso-negativo que o rascunho
+original teria. Página `108356564252733` confirmada subscrita em `leadgen` nesta sessão
+(3ª+ confirmação — já tinha sido validado no spike T4 e no `RUNBOOK.md` §9).
 
 ### Tabela de saída
 
@@ -154,10 +150,8 @@ Meta-ads-crm — status da integração GHL
 ✓/✗   Página subscrita      <fix se falhar>
 ```
 
-**Doctor (Task 21) reusa estas 3 funções** (`check_ghl`, `check_receiver`,
-`check_leadgen_subscription`) — quando a Task 21 mover isso pra `lib/preflight.sh`, copiar
-os corpos acima como estão (já testados ao vivo aqui), com a correção do page token no
-check 3.
+Os checks vivem em `lib/preflight.sh` (11=GHL, 12=receiver, 13=subscrição) — este modo
+`status` reusa a mesma lógica (`check_ghl`, `check_receiver`, `check_leadgen_subscription`).
 
 ## Modo `mapear {form_id}`
 
@@ -229,10 +223,20 @@ Com os IDs em mãos, atualizar `webhook-receiver/config.json` (a partir de
 }
 ```
 
-Isso alimenta o `push_to_ghl` do receiver (`webhook-receiver/app.py:41-52`) — a chave é o
-nome do `tracking_parameter` no form, o valor é o ID do custom field no GHL. Sem essa
-entrada preenchida, o receiver ainda empurra o contato (nome/email/phone), só não os UTMs
-custom.
+Isso alimenta o `push_to_ghl` do receiver (`webhook-receiver/app.py`, símbolo `push_to_ghl`)
+— a chave é o nome do `tracking_parameter` no form, o valor é o ID do custom field no GHL.
+Sem essa entrada preenchida, o receiver ainda empurra o contato (nome/email/phone), só não
+os UTMs custom.
+
+**Editar `webhook-receiver/config.json` direto na VPS exige restart do serviço** —
+`CONFIG` é lido uma única vez, no boot do processo (`app.py:11`,
+`CONFIG = json.loads(...)` no nível de módulo). Depois de editar o arquivo:
+
+```bash
+ssh root@5.78.224.81 "systemctl restart meta-leads.service"
+```
+
+Sem o restart, o receiver segue rodando com o mapeamento antigo em memória.
 
 ### Passo 4 — Lembrete de refresh
 
@@ -522,10 +526,10 @@ atalho pra ver EMQ de um test event isolado.
 
 - **`flows/lead-forms/`** — dono do `form_id` e do `tracking_parameters` que a nativa GHL
   e o receiver consomem; `testar` usa o mesmo payload mínimo validado lá.
-- **`flows/doctor/`** — pre-flight de token/scopes/rate-limit antes de rodar `status`; a
-  Task 21 formaliza `check_ghl`/`check_receiver`/`check_leadgen_subscription` em
-  `lib/preflight.sh`, reusando os corpos deste doc. Também pluga `check_capi_dataset`
-  (Task 21) — reusar o Passo 1 do `capi-testar` acima (POST + `events_received == 1`).
+- **`flows/doctor/`** — pre-flight de token/scopes/rate-limit antes de rodar `status`;
+  `check_ghl`/`check_receiver`/`check_leadgen_subscription` vivem em `lib/preflight.sh`
+  (checks 11/12/13), reusando os corpos deste doc. Também pluga `check_capi_dataset`
+  (check 14) — reusa o Passo 1 do `capi-testar` acima (POST + `events_received == 1`).
 - **`flows/setup/`** — Passo 8.5 coleta `GHL_LOCATION_ID`/`GHL_PIT_TOKEN`/
   `RECEIVER_HEALTH_URL` (spec completa no plano v1.1, Task 21 Step 2).
 - **`webhook-receiver/`** — `config.json` (Passo 3 do modo `mapear`) e `/meta-leads/health`

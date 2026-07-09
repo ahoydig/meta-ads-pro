@@ -153,16 +153,18 @@ test_ghl() {
   [[ -n "$saved_loc" ]] && export GHL_LOCATION_ID="$saved_loc" || true
 }
 
-# 12. Receiver de leadgen — URL que responde 404 (sem JSON válido) deve bloquear
+# 12. Receiver de leadgen — URL que responde 404 (sem JSON válido) deve avisar forte
+# (rc=1, não bloqueia — mudança de contrato consciente: check_ghl/check_receiver são
+# integração opcional, ver lib/preflight.sh e flows/doctor/SKILL.md checks 11/12).
 test_receiver() {
   local saved="${RECEIVER_HEALTH_URL:-}"
   export RECEIVER_HEALTH_URL="https://example.com/404"
   local out rc=0
   out=$(check_receiver 2>&1) || rc=$?
-  if (( rc == 2 )); then
-    _pass "test_receiver: URL fora do ar/sem JSON → bloqueador (rc=2)"
+  if (( rc == 1 )); then
+    _pass "test_receiver: URL fora do ar/sem JSON → aviso forte, não bloqueia (rc=1)"
   else
-    _fail "test_receiver" "esperado rc=2 com RECEIVER_HEALTH_URL=https://example.com/404, obteve rc=$rc out=$out"
+    _fail "test_receiver" "esperado rc=1 com RECEIVER_HEALTH_URL=https://example.com/404, obteve rc=$rc out=$out"
   fi
   if [[ -n "$saved" ]]; then export RECEIVER_HEALTH_URL="$saved"; else unset RECEIVER_HEALTH_URL; fi
 }

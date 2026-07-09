@@ -72,13 +72,13 @@ Verifica se há erros desconhecidos aguardando revisão humana.
 Testa `GHL_PIT_TOKEN`/`GHL_LOCATION_ID` (Private Integration da subconta) contra `GET locations/{id}` na API do GHL/FluxiHub (`services.leadconnectorhq.com`).
 - ✓ OK: mostra nome da subconta
 - ⚠ Aviso: GHL não configurado (ok se não usa CRM — rode `/meta-ads-crm` pra configurar)
-- ✗ Bloqueador: token/location inválidos — regenerar Private Integration
+- ✗ Aviso forte (não bloqueia — integração opcional): token/location inválidos — regenerar Private Integration
 
 ### 12. Receiver de leadgen no ar
 Faz `GET` em `RECEIVER_HEALTH_URL` e espera um campo `received_total` no JSON de resposta.
 - ✓ OK: receiver up (mostra total de leads recebidos)
 - ⚠ Aviso: `RECEIVER_HEALTH_URL` não configurado (webhook de atribuição off)
-- ✗ Bloqueador: receiver fora do ar/URL não responde JSON válido — leads seguem só pela nativa GHL
+- ✗ Aviso forte (não bloqueia — integração opcional): receiver fora do ar/URL não responde JSON válido — leads seguem só pela nativa GHL
 
 ### 13. Página subscrita em leadgen
 Deriva o **page token** internamente (`GET {page_id}?fields=access_token`, nunca ecoado) e confere `{page_id}/subscribed_apps?fields=subscribed_fields` — esse endpoint exige page token, não o `META_ACCESS_TOKEN` normal (confirmado ao vivo, ver `docs/spikes/2026-07-webhook-leadgen.md`).

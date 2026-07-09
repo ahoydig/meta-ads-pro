@@ -232,7 +232,9 @@ check_ghl() {
   if echo "$r" | jq -e '.location.id' >/dev/null 2>&1; then
     echo "✓ GHL: subconta $(echo "$r" | jq -r .location.name)"
   else
-    echo "✗ GHL token/location inválidos — regenerar Private Integration"; return 2
+    # Aviso forte (rc=1), não bloqueia: GHL/receiver são integrações opcionais —
+    # o ✗ na mensagem sinaliza gravidade, mas não deve travar a criação de campanhas.
+    echo "✗ GHL token/location inválidos — regenerar Private Integration"; return 1
   fi
 }
 
@@ -245,7 +247,9 @@ check_receiver() {
   if echo "$r" | jq -e '.received_total' >/dev/null 2>&1; then
     echo "✓ Receiver up ($(echo "$r" | jq -r .received_total) leads recebidos)"
   else
-    echo "✗ Receiver fora do ar — leads seguem só pela nativa GHL"; return 2
+    # Aviso forte (rc=1), não bloqueia: mesma razão do check_ghl acima — a nativa
+    # GHL continua sendo o transporte principal mesmo com o receiver fora do ar.
+    echo "✗ Receiver fora do ar — leads seguem só pela nativa GHL"; return 1
   fi
 }
 
