@@ -1,11 +1,11 @@
 ---
 name: meta-ads-anuncios
-description: Criar anúncios Meta Ads em 2 modos (Normal 1:1 ou Dinâmico asset_feed_spec). Upload multipart cross-platform, dev mode fallback transparente via dark post, cache de media_fbid anti-reuso, geração de copy com humanizer, preview ASCII/HTML. Fix dos bugs #3 (dev mode), #4 (cartesiano), #5 (media_fbid).
+description: Criar anúncios Meta Ads em 3 modos (Normal 1:1, Dinâmico asset_feed_spec, ou Carrossel child_attachments). Upload multipart cross-platform, dev mode fallback transparente via dark post, cache de media_fbid anti-reuso, geração de copy com humanizer, preview ASCII/HTML. Fix dos bugs #3 (dev mode), #4 (cartesiano), #5 (media_fbid).
 ---
 
 # meta-ads-anuncios
 
-A sub-skill mais complexa do plugin. Suporta 2 modos de criativo (Normal/Dinâmico), 4 formatos (imagem/vídeo/carrossel/collection), upload cross-platform (sips/ImageMagick), geração de copy via Claude multimodal + humanizer.
+A sub-skill mais complexa do plugin. Suporta 3 modos de criativo (Normal/Dinâmico/Carrossel), 4 formatos (imagem/vídeo/carrossel/collection), upload cross-platform (sips/ImageMagick), geração de copy via Claude multimodal + humanizer.
 
 ## Quando usar
 
@@ -41,8 +41,17 @@ Qual tipo de criativo?
     Limites v25.0: 10 imgs OR 1 vídeo + 5 headlines + 5 descriptions +
     5 primary texts + 5 CTAs.
 
-Escolha [1/2]:
+[3] Carrossel (2-10 cartões) — N imagens fixas, cada uma com seu próprio
+    headline/descrição/link (child_attachments), rolagem lateral no feed.
+    Resultado: 1 ad único com N cartões fixos (não é combinatório — a ordem
+    de exibição pode variar via multi_share_optimized, mas os cartões em si
+    não mudam como no Dinâmico).
+
+Escolha [1/2/3]:
 ```
+
+Se `[3]`, os passos 3 (matching Normal) e 4 (limites de `asset_feed_spec`) não
+se aplicam — vai direto pra seção **Modo Carrossel** abaixo.
 
 ### Passo 3 — Se Normal: validar matching (FIX BUG #4)
 
@@ -85,6 +94,102 @@ Se user tentou 12 imagens:
 Escolha 10 pra usar, ou troque pra 1 vídeo (sem imagens).
 ```
 
+### Modo Carrossel (Task 16)
+
+Terceiro modo do Passo 2. Diferente do Dinâmico (`asset_feed_spec`, a Meta
+combina automaticamente) e do Normal (N ads separados, 1 imagem cada), o
+Carrossel é **1 ad único com N cartões fixos** —
+`object_story_spec.link_data.child_attachments` — cada cartão com sua própria
+imagem, headline (`name`), descrição e link.
+
+1. **Coleta de N imagens (2–10 cartões).** Mesmo mecanismo do Passo 5 (paths,
+   pasta ou URLs), mas valida a contagem antes de seguir:
+
+   ```
+   ⚠ Carrossel aceita de 2 a 10 cartões (você tem <N>).
+   ```
+
+   Limite confirmado na [doc oficial](https://developers.facebook.com/docs/marketing-api/guides/videoads/):
+   *"A 2-10 element array of link objects required for carousel ads"* — e ela
+   recomenda pelo menos 3 pra performance (2 é só pra integrações leves,
+   resultado sub-ótimo). O teto de 10 **não foi testado ao vivo nesta task**
+   (custaria 1 POST fadado a erro só pra confirmar um número já documentado) —
+   `[não verificado ao vivo, fonte: doc oficial]`.
+
+2. **Copy por cartão** — reusa o pipeline de geração do Passo 6 (`gen_copy` +
+   humanizer obrigatório), mas gera **1 headline + 1 descrição por cartão**
+   (não N variações pra escolher — cada cartão do carrossel é fixo, sem
+   combinação automática como no Dinâmico):
+
+   ```bash
+   for i in "${!imagens[@]}"; do
+     headline["$i"]=$(gen_copy headline 1 "${imagens[$i]}" "$objective" "$audience" "$voice_file" "$product")
+     descricao["$i"]=$(gen_copy description 1 "${imagens[$i]}" "$objective" "$audience" "$voice_file" "$product")
+   done
+   ```
+
+3. **Upload** — `upload_image` (Passo 7) por cartão. Cache por SHA256 poupa
+   re-upload se 2+ cartões apontarem pro mesmo arquivo. **Testado ao vivo**
+   (`tests/20-criativo-avancado.sh test_05_carousel`): a Meta aceita o MESMO
+   `image_hash` repetido em múltiplos `child_attachments` — útil quando o
+   cartão varia só texto/link, não a imagem.
+
+4. **UTM dinâmico — POR CARTÃO (regra inviolável 8 se aplica a CADA cartão).**
+   Diferente do Normal/Dinâmico (1 `link` por ad/variação), o Carrossel tem
+   **N+1 links**: o `link` principal de `link_data` **e** um `link` dentro de
+   CADA `child_attachments[]`. Todos passam por `build_utm_url_dynamic`,
+   exceto deeplinks (pula como sempre — `is_external_url`):
+
+   ```bash
+   source "$CLAUDE_PLUGIN_ROOT/lib/utm.sh"
+
+   is_external_url "$link_principal" && link_principal=$(build_utm_url_dynamic "$link_principal")
+   for i in "${!cartoes_link[@]}"; do
+     is_external_url "${cartoes_link[$i]}" && cartoes_link[$i]=$(build_utm_url_dynamic "${cartoes_link[$i]}")
+   done
+   ```
+
+5. **Preview (Passo 8) — oficial recomendado.** O preview local (`preview_html`,
+   mock HTML) não simula rolagem lateral entre cartões; só o oficial
+   (`preview_meta_oficial`, Task 14, via `generatepreviews`) renderiza o
+   carrossel de verdade. Ad format sugerido: `MOBILE_FEED_STANDARD` (cobre a
+   rolagem lateral no feed).
+
+6. **Criação (Passo 10) — sempre PAUSED (regra 1) + manifest + rollback.**
+   Payload — **testado ao vivo (Task 16), aceito verbatim, zero correção de
+   sintaxe**:
+
+   ```json
+   {
+     "name": "<nome gerado via nomenclatura>",
+     "object_story_spec": {
+       "page_id": "<page_id>",
+       "link_data": {
+         "message": "<legenda do carrossel>",
+         "link": "<link principal, com UTM dinâmico>",
+         "child_attachments": [
+           {"link": "<link cartão 1, com UTM dinâmico>", "image_hash": "<hash 1>", "name": "<headline 1>", "description": "<descrição 1>"},
+           {"link": "<link cartão 2, com UTM dinâmico>", "image_hash": "<hash 2>", "name": "<headline 2>", "description": "<descrição 2>"}
+         ],
+         "multi_share_optimized": true,
+         "multi_share_end_card": false
+       }
+     }
+   }
+   ```
+
+   - `multi_share_optimized` — *"automatically select and order images and
+     links. Default is true"* ([doc oficial](https://developers.facebook.com/docs/marketing-api/reference/ad-creative-link-data/)).
+     Deixa a Meta reordenar os cartões conforme performance.
+   - `multi_share_end_card` — *"If set to false, removes the end card which
+     displays the page icon. Default is true"* (mesma doc). `false` = sem
+     cartão final "veja a página"; `true` (default, se omitido) mantém.
+   - `POST {ad_account}/adcreatives` → `id` do creative. Depois, ad normal com
+     `creative.creative_id` (igual aos outros modos).
+   - Registra em manifest (`manifest_add "adcreative" "$creative_id"`) e no ad
+     — `rollback_on_failure` cobre o Carrossel sem mudança: é 1 creative + 1 ad,
+     mesma topologia do Normal single-ad.
+
 ### Passo 5 — Coletar criativos
 
 Pergunta path(s) ou pasta:
@@ -101,7 +206,7 @@ Detecta automático:
 - Dimensão: `_detect_image_dims` (sips -g ou identify)
 - Spec por posicionamento (feed 1080×1080, stories/reels 1080×1920)
 
-Se fora de spec:
+Se fora de spec (resolução insuficiente):
 
 ```
 ⚠ Imagem 500×500 — mínimo pra feed é 1080×1080.
@@ -109,6 +214,62 @@ Quer que eu redimensione automaticamente? [s/N]
 ```
 
 Se sim → `resize_if_needed` (sips no macOS, ImageMagick no Linux/WSL).
+
+**Se fora de spec por aspect ratio, não por resolução (Task 15):** quando a imagem já
+tem resolução suficiente mas o aspect ratio nativo diverge do alvo do placement (ex.:
+retrato 1080×1920 pra um placement 1:1 de feed, ou uma foto 1200×800 landscape pra
+1:1/9:16), resize sozinho distorce (stretch) ou faz letterbox. Oferece crop explícito
+como alternativa:
+
+```
+⚠ Imagem 1080×1920 (9:16) não bate com o alvo 1:1 (feed).
+
+[r] Redimensionar (resize/stretch pro alvo — pode distorcer)
+[c] Crop explícito (corta uma janela 1:1 centrada — sem distorcer, perde borda)
+[n] Manter como está (deixa a Meta aplicar o crop automático dela)
+
+Escolha [r/c/n]:
+```
+
+Se `[c]`:
+1. Calcula a janela centrada pro aspect alvo a partir de `_detect_image_dims`
+   (largura×altura originais):
+   - Alvo mais estreito/quadrado que a original → corta os lados: `nova_largura =
+     altura_original × aspect_alvo`; `margem_x = (largura_original − nova_largura) / 2`;
+     janela = `[[margem_x, 0], [margem_x + nova_largura, altura_original]]`.
+   - Alvo mais largo que a original → corta topo/base: `nova_altura = largura_original
+     ÷ aspect_alvo`; `margem_y = (altura_original − nova_altura) / 2`; janela =
+     `[[0, margem_y], [largura_original, margem_y + nova_altura]]`.
+   - Exemplo real (testado ao vivo, Task 15 — `tests/20-criativo-avancado.sh
+     test_02_image_crops`): fixture 1080×1920 → alvo 1:1 → `margem_y = (1920−1080)/2 =
+     420` → janela `[[0,420],[1080,1500]]`.
+2. Monta `image_crops` — chave é o aspect ratio alvo no formato `"WxH"` (ex.:
+   `"100x100"` = 1:1, **testado ao vivo**; outras razões seguem a mesma convenção da
+   [doc oficial de crops](https://developers.facebook.com/documentation/ads-commerce/marketing-api/image-crops),
+   mas não foram testadas nesta task — `[não verificado]`).
+
+   ⚠ **Divergência achada ao vivo (Task 15):** `image_crops` **não** funciona como
+   campo top-level do creative — a Meta aceita o POST (retorna 201 com `id`), mas
+   ignora o campo em silêncio (o GET seguinte devolve objeto vazio, sem erro). Só
+   persiste **aninhado dentro de `object_story_spec.link_data.image_crops`**:
+
+   ```json
+   {
+     "object_story_spec": {
+       "page_id": "...",
+       "link_data": {
+         "image_hash": "...",
+         "link": "...",
+         "message": "...",
+         "image_crops": {"100x100": [[0, 420], [1080, 1500]]}
+       }
+     }
+   }
+   ```
+
+   Depois de persistido, o GET espelha o valor tanto em `image_crops` (campo
+   top-level, read-only) quanto dentro de `object_story_spec.link_data.image_crops`.
+   Ver apêndice em `docs/spikes/2026-07-api-version.md`.
 
 ### Passo 6 — Geração de copy (opcional, granular)
 
@@ -223,19 +384,30 @@ ASCII tree default (inline, rápido):
 └──────────────────────────────────────────────────────────┘
 ```
 
-Se user digitar `preview visual` ou responder `p`:
-- `preview_html` (via `lib/_py/preview_html.py` stdin-safe) gera HTML 375×812
-- `open`/`xdg-open`/`cmd.exe start` conforme OS
+Depois do ASCII, pergunta qual preview visual (se algum):
+
+```
+Preview visual?
+  [n] Nenhum, seguir (default)
+  [p] Local (HTML mock) — rápido, offline, aproximado
+  [o] Oficial Meta (generatepreviews) — fiel ao anúncio real, requer chamada à API
+
+Escolha [n/p/o]:
+```
+
+- `[p]` Local: `preview_html` (via `lib/_py/preview_html.py` stdin-safe) gera HTML 375×812 mock, `open`/`xdg-open`/`cmd.exe start` conforme OS. Instantâneo, offline, mas é aproximação — não reflete 100% do que a Meta vai renderizar.
+- `[o]` Oficial: `preview_meta_oficial <creative_spec>` (`lib/visual-preview.sh`, Task 14) chama `generatepreviews` de verdade e monta HTML com o(s) iframe(s) oficiais da Meta — um `<h2>` por `ad_format` (ex.: `MOBILE_FEED_STANDARD` pra Normal, `INSTAGRAM_STANDARD`/`INSTAGRAM_STORY`/`INSTAGRAM_REELS` conforme posicionamento escolhido). Mais fiel, mas custa 1 chamada GET por formato — não usar em loop apertado.
 
 ### Passo 9 — Confirmação explícita
 
 ```
-Confirma criação de N ad(s)? [s/n/p=preview visual] [s]:
+Confirma criação de N ad(s)? [s/n/p=preview local/o=preview oficial] [s]:
 ```
 
 - `s` → vai pro passo 10
 - `n` → cancela (nada criado ainda, rollback não necessário)
-- `p` → gera HTML, abre browser, volta a perguntar
+- `p` → gera HTML local (mock), abre browser, volta a perguntar
+- `o` → gera HTML com preview oficial Meta (`preview_meta_oficial`), abre browser, volta a perguntar
 
 ### Passo 10 — Criação (diverge em 2 caminhos por app mode)
 
@@ -274,6 +446,75 @@ Pra cada combo (imagem/vídeo + copy) em Normal, OU uma única vez em Dinâmico:
 ```
 
 **Nunca** cria N×M ads em Dinâmico. Asset feed já combina automaticamente.
+
+**Se Carrossel (ambos modos):** 1 único creative com
+`object_story_spec.link_data.child_attachments` — payload completo, decisão de
+hash reusado vs. uploads distintos, e UTM por cartão na seção **Modo
+Carrossel** (acima, entre Passo 4 e Passo 5).
+
+#### Placement customization (Task 15, só em modo Dinâmico)
+
+Pergunta adicional, depois de montar o `asset_feed_spec` base:
+
+```
+Imagens diferentes por posicionamento? [s/N]
+```
+
+Se `s`:
+1. Coleta pares imagem ↔ grupo de placements (ex.: "imagem A → feed", "imagem B →
+   story"). Um grupo = combinação de `publisher_platforms` + `*_positions` por
+   plataforma (`facebook_positions`, `instagram_positions` — testados ao vivo;
+   `audience_network_positions`/`messenger_positions` seguem a mesma convenção mas
+   **não foram testados** nesta task, `[não verificado]`).
+2. **Regra inviolável:** toda imagem referenciada numa `asset_customization_rules`
+   precisa do `adlabel` correspondente em `asset_feed_spec.images[].adlabels` (mesmo
+   `name` usado em `image_label.name` da rule). Sem o adlabel casando, a rule não tem
+   imagem pra apontar.
+3. Monta `asset_feed_spec.asset_customization_rules`. Payload de referência —
+   **testado ao vivo (Task 15), aceito verbatim, zero correção de sintaxe**:
+
+```json
+{
+  "name": "<nome gerado via nomenclatura>",
+  "object_story_spec": {"page_id": "..."},
+  "asset_feed_spec": {
+    "images": [
+      {"hash": "h1", "adlabels": [{"name": "img_feed"}]},
+      {"hash": "h2", "adlabels": [{"name": "img_story"}]}
+    ],
+    "bodies": [{"text": "corpo"}],
+    "titles": [{"text": "titulo"}],
+    "link_urls": [{"website_url": "https://..."}],
+    "call_to_action_types": ["LEARN_MORE"],
+    "ad_formats": ["SINGLE_IMAGE"],
+    "asset_customization_rules": [
+      {
+        "customization_spec": {
+          "publisher_platforms": ["facebook", "instagram"],
+          "facebook_positions": ["feed"],
+          "instagram_positions": ["stream"]
+        },
+        "image_label": {"name": "img_feed"}
+      },
+      {
+        "customization_spec": {
+          "publisher_platforms": ["facebook", "instagram"],
+          "facebook_positions": ["story"],
+          "instagram_positions": ["story"]
+        },
+        "image_label": {"name": "img_story"}
+      }
+    ]
+  }
+}
+```
+
+- A Meta devolve o `asset_feed_spec` com campos extras auto-preenchidos por ela
+  (`priority` incremental em cada rule, `age_min`/`age_max` dentro de cada
+  `customization_spec`, `optimization_type: "PLACEMENT"`) — **não enviar** esses
+  campos no payload, são só enriquecimento no round-trip do GET.
+- `image_label` referencia o adlabel pelo `name` (não pelo `hash` da imagem
+  diretamente) — é por isso que todo par imagem↔placement passa por um adlabel.
 
 ### Passo 11 — Resumo + links
 
@@ -325,6 +566,7 @@ Em qualquer falha, rollback reverte tudo na topologia correta (ads → creatives
 | Vídeos em `asset_feed_spec` | 1 (não mistura com images) |
 | `titles`/`descriptions`/`bodies` | 5 cada |
 | `call_to_action_types` em `asset_feed_spec` | 5 |
+| `child_attachments` (Carrossel) | 2–10 (recomendado ≥3 pra performance) |
 | Tamanho imagem | 30MB |
 | Tamanho vídeo | 4GB |
 | Duração vídeo feed | 241min |
@@ -353,9 +595,10 @@ Ver `lib/error-catalog.yaml` e `lib/error-resolver.sh`:
 - `lib/upload_video.sh` — 3 estratégias por tamanho
 - `lib/copy_generator.sh` — gen_copy (invoca copy_prompt_builder + claude_invoke_api)
 - `lib/humanizer-bridge.sh` — humanize_text, humanize_array com 3 fallbacks
+- `lib/utm.sh` — build_utm_url_dynamic, build_utm_url_static, is_external_url, strip_existing_utm (passo 7.5 e Modo Carrossel)
 - `lib/error-resolver.sh` — switch_to_dark_post_flow (fix bug #3)
 - `lib/rollback.sh` — rollback_on_failure automático
-- `lib/visual-preview.sh` — preview_ascii, preview_html (stdin-safe)
+- `lib/visual-preview.sh` — preview_ascii, preview_html (stdin-safe), preview_meta_oficial (iframe oficial via generatepreviews, Task 14)
 - `lib/nomenclatura.sh` — gen_name pra criativos (suporta `{nome-criativo}` com hífen)
 
 ## Flags CLI

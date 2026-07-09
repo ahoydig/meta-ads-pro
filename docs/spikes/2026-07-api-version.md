@@ -111,3 +111,182 @@ https://developers.facebook.com/docs/graph-api/changelog), o bump real será: mu
 fallback `v25.0` → `v26.0` nos ~7 arquivos listados acima (ou, mais simples, só exportar
 `META_API_VERSION=v26.0` no `.env`, já que todo o repo lê essa env var) e repetir o
 Step 2 (auditoria de breaking changes) desta task para a v26.0 real.
+
+## Apêndice — Task 15: `image_crops` + `asset_customization_rules` (2026-07-09)
+
+Testes live contra a conta real (`tests/20-criativo-avancado.sh`,
+`test_02_image_crops` e `test_03_asset_customization_rules`), padrão da casa:
+payload → resposta verbatim (nenhum é hipotético), `META_API_VERSION` = v25.0.
+
+### `image_crops` — divergência achada ao vivo
+
+O brief da task assumia `image_crops` como campo **top-level** do creative (ao lado
+de `object_story_spec`, `name` etc.). Testado ao vivo, isso **não funciona**: a Meta
+aceita o POST (retorna `201` com `id`), mas ignora o campo em silêncio — nenhum erro,
+o GET seguinte simplesmente não devolve `image_crops`.
+
+**Tentativa 1 — `image_crops` top-level (payload do brief, sem correção):**
+
+```json
+{
+  "name": "TEST_crops_debug",
+  "object_story_spec": {
+    "page_id": "108356564252733",
+    "link_data": {
+      "message": "crop test debug",
+      "link": "https://ahoy.digital",
+      "image_hash": "c12e54946ffb81e3652ad929fa3c325e"
+    }
+  },
+  "image_crops": {"100x100": [[0, 420], [1080, 1500]]}
+}
+```
+
+Resposta do `POST .../adcreatives` (sucesso, sem erro — é isso que engana):
+
+```json
+{"id": "996708006500853"}
+```
+
+Resposta do `GET {id}?fields=image_crops` logo em seguida:
+
+```json
+{"id": "996708006500853"}
+```
+
+`image_crops` some — a Meta aceitou o creative e descartou o campo em silêncio.
+
+**Tentativa 2 — `image_crops` aninhado em `object_story_spec.link_data` (shape
+correto, confirmado pela doc oficial
+[ads-commerce/marketing-api/image-crops](https://developers.facebook.com/documentation/ads-commerce/marketing-api/image-crops)):**
+
+```json
+{
+  "name": "TEST_crops_debug2",
+  "object_story_spec": {
+    "page_id": "108356564252733",
+    "link_data": {
+      "message": "crop test debug2",
+      "link": "https://ahoy.digital",
+      "image_hash": "c12e54946ffb81e3652ad929fa3c325e",
+      "image_crops": {"100x100": [[0, 420], [1080, 1500]]}
+    }
+  }
+}
+```
+
+Resposta do `POST`:
+
+```json
+{"id": "2074362566500876"}
+```
+
+Resposta do `GET {id}?fields=image_crops` (persistiu, e também espelha no campo
+top-level read-only):
+
+```json
+{"image_crops": {"100x100": [[0, 420], [1080, 1500]]}, "id": "2074362566500876"}
+```
+
+**Conclusão:** `image_crops` só persiste dentro de
+`object_story_spec.link_data.image_crops`. O campo `image_crops` top-level do
+`AdCreative` existe no schema de leitura (`GET .../adcreatives?fields=image_crops`
+é um field válido, é assim que o teste confirma persistência), mas **não é onde se
+escreve** — escrever lá é aceito e descartado sem erro, o tipo de bug silencioso mais
+perigoso de reproduzir sem teste live. `SKILL.md` (Passo 5) e `tests/20-criativo-avancado.sh`
+(`test_02_image_crops`) corrigidos pro shape aninhado.
+
+A chave `"100x100"` (aspect ratio 1:1) foi testada ao vivo e funciona. Não foi
+verificada nenhuma outra chave (`[não verificado]`) — a doc oficial confirma que "a
+chave descreve um aspect ratio" mas não lista o enum completo nesta versão da página;
+uma chave legada (`"191x100"`, 1.91:1) aparece em fontes de terceiros como **depreciada**
+nas versões mais novas da API em favor de `use_flexible_image_aspect_ratio`, mas isso
+não foi confirmado na doc oficial da Meta nem testado nesta task — tratar como
+`[não verificado — fonte secundária]` até um spike dedicado.
+
+### `asset_customization_rules` — sem divergência
+
+O payload do brief (`asset_feed_spec.images[].adlabels` + `asset_customization_rules`
+com `customization_spec.{publisher_platforms,facebook_positions,instagram_positions}`
++ `image_label.name`) foi aceito **verbatim**, sem nenhuma correção de sintaxe.
+
+Payload enviado (`test_03_asset_customization_rules`):
+
+```json
+{
+  "name": "TEST_asset_custom_debug",
+  "object_story_spec": {"page_id": "108356564252733"},
+  "asset_feed_spec": {
+    "images": [
+      {"hash": "a4373875f17ade6d28d5623ef146c7cc", "adlabels": [{"name": "img_feed"}]},
+      {"hash": "c12e54946ffb81e3652ad929fa3c325e", "adlabels": [{"name": "img_story"}]}
+    ],
+    "bodies": [{"text": "corpo"}],
+    "titles": [{"text": "titulo"}],
+    "link_urls": [{"website_url": "https://ahoy.digital"}],
+    "call_to_action_types": ["LEARN_MORE"],
+    "ad_formats": ["SINGLE_IMAGE"],
+    "asset_customization_rules": [
+      {
+        "customization_spec": {
+          "publisher_platforms": ["facebook", "instagram"],
+          "facebook_positions": ["feed"],
+          "instagram_positions": ["stream"]
+        },
+        "image_label": {"name": "img_feed"}
+      },
+      {
+        "customization_spec": {
+          "publisher_platforms": ["facebook", "instagram"],
+          "facebook_positions": ["story"],
+          "instagram_positions": ["story"]
+        },
+        "image_label": {"name": "img_story"}
+      }
+    ]
+  }
+}
+```
+
+Resposta do `GET {id}?fields=asset_feed_spec` (creative `1318626883330212`,
+deletado no cleanup do teste):
+
+```json
+{
+  "asset_feed_spec": {
+    "images": [
+      {"adlabels": [{"name": "img_feed", "id": "120255177459050196"}], "hash": "a4373875f17ade6d28d5623ef146c7cc"},
+      {"adlabels": [{"name": "img_story", "id": "120255177459060196"}], "hash": "c12e54946ffb81e3652ad929fa3c325e"}
+    ],
+    "bodies": [{"text": "corpo"}],
+    "call_to_action_types": ["LEARN_MORE"],
+    "descriptions": [{"text": "Marketing, IA e automação a serviço de negócios reais."}],
+    "link_urls": [{"website_url": "https://ahoy.digital/"}],
+    "titles": [{"text": "titulo"}],
+    "ad_formats": ["SINGLE_IMAGE"],
+    "asset_customization_rules": [
+      {
+        "customization_spec": {"age_max": 65, "age_min": 13, "publisher_platforms": ["facebook", "instagram"], "facebook_positions": ["feed"], "instagram_positions": ["stream"]},
+        "image_label": {"name": "img_feed", "id": "120255177459050196"},
+        "priority": 1
+      },
+      {
+        "customization_spec": {"age_max": 65, "age_min": 13, "publisher_platforms": ["facebook", "instagram"], "facebook_positions": ["story"], "instagram_positions": ["story"]},
+        "image_label": {"name": "img_story", "id": "120255177459060196"},
+        "priority": 2
+      }
+    ]
+  },
+  "id": "1318626883330212"
+}
+```
+
+A Meta enriquece a resposta com `age_min`/`age_max` por rule, `priority` incremental
+e (no nível do `asset_feed_spec`) `optimization_type: "PLACEMENT"` — nenhum desses
+campos foi enviado no payload; são defaults auto-preenchidos, não obrigatórios na
+escrita.
+
+**Nota sobre `descriptions`:** a resposta trouxe um `descriptions[]` que não foi
+enviado no payload — provável default herdado da conta/Página (não investigado nesta
+task, fora de escopo; não afeta o resultado do teste, que valida só a persistência de
+`asset_customization_rules`).
