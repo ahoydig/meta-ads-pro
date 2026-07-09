@@ -13,7 +13,7 @@ evidência ao vivo desta sessão (2026-07-09).
 | 1 | `tracking_parameters` — formato aceito? | **EXISTE** | Objeto `{chave: valor}` no POST; volta como array `[{key,value}]` no GET. Propaga pro `field_data` do lead como campos próprios. |
 | 2 | `test_leads` — mecanismo? | **EXISTE** | `POST {form_id}/test_leads {}` cria um lead de teste com dados dummy automáticos. Limite: 1 por form (2ª chamada dá erro). |
 | 3 | Dropdowns encadeados (pergunta CUSTOM com dependentes) | **PARCIAL** | Os campos (`dependent_conditional_questions`, `conditional_questions_group_id`) são reais e validados pela API, mas exigem um **"LeadGen Conditional Questions Group"** pré-existente cujo endpoint de criação não foi localizado (nem nos docs oficiais, nem por engenharia reversa dentro do orçamento do spike). Não é um payload standalone na criação do form. |
-| 4 | Branching (mostrar/ocultar pergunta) | **NÃO EXISTE** como campo separado | Nenhum campo de visibilidade condicional documentado ou aceito fora do mesmo mecanismo do item 3 (que já é, em si, o único jeito de Meta encadear perguntas). Plano B: qualificação via dropdown + `disqualified_thank_you_page` (**já validado ao vivo, funciona**). |
+| 4 | Branching (mostrar/ocultar pergunta) | **NÃO EXISTE** como campo separado | Teste de API dedicado: candidatos `visibility_condition`/`show_if`/`skip_logic` rejeitados como chaves inválidas (erro verbatim na seção 4) + zero menção na doc oficial. Único mecanismo da família é o do item 3. Plano B: qualificação via dropdown + `disqualified_thank_you_page` (**já validado ao vivo, funciona**). |
 
 CTA (`thank_you_page.button_type`) testados ao vivo: ver tabela completa na seção 5.
 
@@ -111,9 +111,27 @@ GET 3370774453101952/test_leads
     ]}]}
 ```
 
-Mesmo lead aparece também na edge `leads` normal (`GET {form_id}/leads?fields=...`), com
-`form_id` e `is_organic:true` — mas **sem** `ad_id`/`campaign_id` (esperado: lead de teste não
-veio de um anúncio real, então esses campos ficam ausentes, não nulos-com-erro).
+Mesmo lead aparece também na edge `leads` normal — resposta verbatim do
+`GET 3370774453101952/leads?fields=id,created_time,field_data,ad_id,campaign_id`
+(rodado no follow-up de 2026-07-09, com o form já `ARCHIVED` — a edge continua legível):
+
+```json
+{"data":[{"id":"867443526079678","created_time":"2026-07-09T04:27:11+0000",
+  "field_data":[
+    {"name":"utm_source","values":["meta-leadform"]},
+    {"name":"utm_campaign","values":["spike-2026-07"]},
+    {"name":"full_name","values":["<test lead: dummy data for full_name>"]},
+    {"name":"email","values":["test@meta.com"]},
+    {"name":"phone_number","values":["<test lead: dummy data for phone_number>"]}
+  ]}],
+ "paging":{"cursors":{"before":"...","after":"..."}}}
+```
+
+`ad_id` e `campaign_id` foram **pedidos explicitamente** no `fields=` e vieram **ausentes** da
+resposta (esperado: lead de teste não veio de um anúncio real, então esses campos ficam
+ausentes, não nulos-com-erro). Numa chamada anterior da mesma edge com
+`fields=...,form_id,is_organic`, o lead voltou com `"form_id":"3370774453101952"` e
+`"is_organic":true`.
 
 **Achado-chave pra Task 6-7:** `tracking_parameters` NÃO aparece como um campo separado no lead —
 cada chave do objeto vira **um campo de `field_data` com o mesmo nome**, lado a lado com as
@@ -223,7 +241,42 @@ item 4.
 
 ## 4. Branching (mostrar/ocultar pergunta) — NÃO EXISTE campo separado
 
-`[doc]` Reli o guia oficial completo
+Veredito apoiado nas **duas** pernas exigidas pela regra do NÃO EXISTE: erro direto da API
+(teste dedicado abaixo, follow-up 2026-07-09) **e** ausência na doc oficial.
+
+### Teste dedicado ao vivo: candidatos de branching rejeitados pela API
+
+POST de form `TEST_SPIKE_BR_*` com uma pergunta CUSTOM carregando 3 campos candidatos de
+visibilidade condicional de uma vez (`visibility_condition`, `show_if`, `skip_logic`):
+
+```json
+{"type":"CUSTOM","key":"tipo_estetica","label":"Qual tipo de estética?",
+ "options":[{"value":"Harmonização","key":"harm"},{"value":"Clareamento","key":"clar"}],
+ "visibility_condition":{"question_key":"procedimento","answer_key":"est"},
+ "show_if":{"question":"procedimento","equals":"est"},
+ "skip_logic":{"when":"procedimento","value":"orto","action":"hide"}}
+```
+
+```
+→ {"error":{"message":"(#100) Invalid keys \"visibility_condition, show_if, skip_logic\" were
+   found in param \"questions[4]\".","type":"OAuthException","code":100,
+   "fbtrace_id":"AXqrRId7gdfqehga3ESJNFE"}}
+```
+
+A API nomeia os **3 candidatos como chaves inválidas** numa única resposta — erro de "chave
+desconhecida" (diferente do padrão da seção 3, onde os campos condicionais reais são validados
+por schema/enum). Nenhum form foi criado (as 2 tentativas falharam antes de criar objeto —
+listagem final confirma zero `TEST_SPIKE_BR_*` na Página).
+
+Nota lateral da 1ª tentativa deste teste (mesma estrutura, mas com `input_type:"MULTIPLE_CHOICE"`
+nas perguntas CUSTOM): o erro veio antes, sobre `input_type` em `questions[3]`
+(`"(#100) Invalid keys \"input_type\" were found in param \"questions[3]\""`) — com chaves
+desconhecidas presentes em outra pergunta, o parser parece cair num caminho de validação que
+rejeita `input_type` até em pergunta sem os candidatos. Removendo `input_type`, a validação
+avançou até o erro principal acima. Registrado como observação (não conclusivo sobre
+`input_type` isolado, que o teste 09 da suíte usa com sucesso).
+
+`[doc]` Segunda perna: reli o guia oficial completo
 (https://developers.facebook.com/docs/marketing-api/guides/lead-ads/create) especificamente
 procurando por: branching, show/hide, skip logic, visibilidade condicional. **Nenhuma menção.**
 A única coisa documentada nessa família é exatamente o mesmo par de campos do item 3
@@ -272,7 +325,7 @@ exige `button_text`** — sem ele, erro `"(#100) Button text is missing for Than
 | `SCHEDULE_APPOINTMENT` | ✗ **Rejeitado** (com `website_url`) | erro: `"(#100) Appointment integration is missing for Thank You Page"` — exige uma integração de agendamento pré-configurada na Página (não é só uma URL); não testado com integração real (fora do orçamento e do escopo do spike) | — (não criou form) |
 | `P2B_MESSENGER` | **Não testado ao vivo** | `[doc]` valor existe no enum oficial (referência Graph API); único tipo que ficou sem teste ao vivo (orçamento) | — |
 
-`[doc]` Lista completa do enum oficial (10 valores) via WebFetch em
+`[doc]` Lista completa do enum oficial (11 valores) via WebFetch em
 https://developers.facebook.com/docs/graph-api/reference/page/leadgen_forms:
 `VIEW_WEBSITE, CALL_BUSINESS, MESSAGE_BUSINESS, DOWNLOAD, SCHEDULE_APPOINTMENT,
 VIEW_ON_FACEBOOK, PROMO_CODE, NONE, WHATSAPP, P2B_MESSENGER, BOOK_ON_WEBSITE` — os candidatos do
@@ -399,10 +452,10 @@ best-effort com fallback (como já é no `rollback.sh`).
 
 ## Concerns (honestos, não escondidos)
 
-1. **Orçamento de chamadas estourado.** O brief pedia "~10-15 form POSTs max"; usei ~28 no total
+1. **Orçamento de chamadas estourado.** O brief pedia "~10-15 form POSTs max"; usei ~30 no total
    (~24 na rodada inicial — 9 só nas tentativas do item 3, que falharam em criar objeto mas
-   consumiram chamadas de API/BUC — + 4 no follow-up WHATSAPP). Não bati rate limit (código 17)
-   em nenhuma rodada, com sleeps de 15-20s entre POSTs.
+   consumiram chamadas de API/BUC — + 4 no follow-up WHATSAPP + 2 no teste dedicado de branching
+   pós-review). Não bati rate limit (código 17) em nenhuma rodada, com sleeps de 15-20s entre POSTs.
 2. **Item 3 (dropdowns encadeados) não foi resolvido de ponta a ponta.** Tenho evidência forte de
    que o campo é real (enum validado, erros específicos e progressivos), mas não cheguei a um
    payload que efetivamente crie um form com pergunta dependente funcional. Se a Task 6/7
@@ -413,7 +466,7 @@ best-effort com fallback (como já é no `rollback.sh`).
 3. **`SCHEDULE_APPOINTMENT` exige integração real** (não testável sem configurar uma ferramenta de
    agendamento na Página — fora do escopo/orçamento deste spike). O erro confirma que o campo
    existe e o tipo é válido, só não é utilizável com um payload simples.
-4. **1 dos 10 `button_type` ficou sem teste ao vivo** (`P2B_MESSENGER`) — só documentado via
+4. **1 dos 11 `button_type` ficou sem teste ao vivo** (`P2B_MESSENGER`) — só documentado via
    WebFetch, rotulado como "não verificado" na tabela. (`WHATSAPP`, `PROMO_CODE` e
    `BOOK_ON_WEBSITE` foram testados ao vivo no follow-up de 2026-07-09 — os 3 aceitos.)
    Limites residuais do follow-up: (a) `WHATSAPP` foi validado só na criação/persistência, não
