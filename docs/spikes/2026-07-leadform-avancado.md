@@ -236,7 +236,7 @@ para Task 6-8 é: **não construir sobre um campo de branching que não foi vali
 ### Plano B (já validado ao vivo nesta sessão): qualificação via dropdown + `disqualified_thank_you_page`
 
 `disqualified_thank_you_page` **é um campo real e funcional** — usado com sucesso em **todos os
-5 forms criados neste spike** (nunca deu erro, sempre aceito). O padrão prático recomendado pra
+9 forms criados neste spike** (nunca deu erro, sempre aceito). O padrão prático recomendado pra
 Task 6-8, sem depender de branching real:
 
 1. Pergunta `CUSTOM` tipo `MULTIPLE_CHOICE` (dropdown comum, sem `dependent_conditional_questions`)
@@ -265,9 +265,12 @@ exige `button_text`** — sem ele, erro `"(#100) Button text is missing for Than
 | `VIEW_ON_FACEBOOK` | ✓ Aceito | `button_text` | `1030359426026229` |
 | `CALL_BUSINESS` | ✓ Aceito | `button_text` + `business_phone_number` (formato E.164 completo, ex. `"+5511987654321"`) + `country_code` (alpha-2, ex. `"BR"`) — **os dois juntos**; formatos parciais (só E.164 sem `country_code`, ou número "fake" tipo `+5511999999999`) deram erro `(#192) not a valid phone number` | `1535512335031725` |
 | `DOWNLOAD` | ✓ Aceito | `button_text` + `website_url` (aponta pro arquivo a baixar — **não** usa `gated_file`, que é um campo separado documentado mas não exigido aqui) | `2865022360564388` |
+| `WHATSAPP` | ✓ Aceito | `button_text` apenas (mínimo). `business_phone_number` (E.164) + `country_code` (alpha-2) são **opcionais e aceitos juntos** — round-trip via GET confirma os dois persistidos. Sem número explícito, o form cria mesmo assim (presumivelmente aponta pro WhatsApp conectado à Página — comportamento do clique **não verificado ao vivo**, só a criação). Pro funil clínica (lead → WhatsApp da clínica), **sempre passar `business_phone_number`+`country_code` explícitos** | `1665612771201351` (mínimo) + `1369929578445450` (com número) |
+| `PROMO_CODE` | ✓ Aceito | `button_text` apenas — nenhum campo de código promocional foi exigido na criação (round-trip via GET não mostra campo de código; onde o código em si é configurado **não foi descoberto** — provável UI/campo não testado) | `1460880602509313` |
+| `BOOK_ON_WEBSITE` | ✓ Aceito | testado com `button_text` + `website_url` (aceito de primeira; não falsifiquei se `website_url` é estritamente obrigatório — `[doc]` a referência indica que sim) | `1167964532207741` |
 | `MESSAGE_BUSINESS` | ✗ **Rejeitado** | erro explícito: `"(#100) This button type is not yet supported for Thank You Page"` — não é problema de payload, é o tipo em si desabilitado nesta conta/versão | — (não criou form) |
 | `SCHEDULE_APPOINTMENT` | ✗ **Rejeitado** (com `website_url`) | erro: `"(#100) Appointment integration is missing for Thank You Page"` — exige uma integração de agendamento pré-configurada na Página (não é só uma URL); não testado com integração real (fora do orçamento e do escopo do spike) | — (não criou form) |
-| `WHATSAPP`, `PROMO_CODE`, `BOOK_ON_WEBSITE`, `P2B_MESSENGER` | **Não testado ao vivo** | `[doc]` valores existem no enum oficial (referência Graph API); orçamento de chamadas do spike (~24 POSTs de leadgen_forms já consumidos, acima do teto de 10-15 sugerido) não permitiu testar os 4 restantes com segurança de rate-limit | — |
+| `P2B_MESSENGER` | **Não testado ao vivo** | `[doc]` valor existe no enum oficial (referência Graph API); único tipo que ficou sem teste ao vivo (orçamento) | — |
 
 `[doc]` Lista completa do enum oficial (10 valores) via WebFetch em
 https://developers.facebook.com/docs/graph-api/reference/page/leadgen_forms:
@@ -277,18 +280,60 @@ brief (`VIEW_URL`, `CALL`, `MESSAGE`) **não são os nomes reais**; os nomes cor
 `VIEW_WEBSITE`, `CALL_BUSINESS`, `MESSAGE_BUSINESS` (confirmado tanto pela doc quanto pelos
 testes ao vivo acima — `VIEW_URL` nunca foi tentado porque a doc já indicava que não existe).
 
-**Recomendação pra Task 6-8:** implementar como aceitos os 5 confirmados ao vivo
-(`NONE`, `VIEW_WEBSITE`, `VIEW_ON_FACEBOOK`, `CALL_BUSINESS`, `DOWNLOAD`) com os campos
-obrigatórios exatos da tabela; tratar `MESSAGE_BUSINESS` e `SCHEDULE_APPOINTMENT` como
-"documentados mas indisponíveis para criação simples" (mensagem de erro clara pro usuário, não
-mascarar); e marcar `WHATSAPP`/`PROMO_CODE`/`BOOK_ON_WEBSITE`/`P2B_MESSENGER` como
-"não verificado nesta conta" até um spike futuro com orçamento de chamadas dedicado.
+### Evidência ao vivo do CTA WHATSAPP (follow-up 2026-07-09, o CTA do funil clínica)
+
+Payload mínimo aceito (só `button_text` a mais que o base):
+
+```json
+"thank_you_page": {"title":"Obrigado!","body":"Em contato em breve",
+                   "button_type":"WHATSAPP","button_text":"Chamar no WhatsApp"}
+→ {"id":"1665612771201351"}
+```
+
+Round-trip do mínimo (`GET 1665612771201351?fields=thank_you_page`) — **sem** número persistido:
+
+```json
+{"thank_you_page":{"title":"Obrigado!","body":"Em contato em breve",
+  "button_text":"Chamar no WhatsApp","enable_messenger":false,"button_type":"WHATSAPP",
+  "id":"1286114873605816"}}
+```
+
+Com número explícito (o formato que o funil clínica deve usar):
+
+```json
+"thank_you_page": {"title":"Obrigado!","body":"Em contato em breve",
+  "button_type":"WHATSAPP","button_text":"Chamar no WhatsApp",
+  "business_phone_number":"+5511987654321","country_code":"BR"}
+→ {"id":"1369929578445450"}
+```
+
+Round-trip confirma os dois campos persistidos:
+
+```json
+{"thank_you_page":{"title":"Obrigado!","body":"Em contato em breve",
+  "button_text":"Chamar no WhatsApp","enable_messenger":false,
+  "business_phone_number":"+5511987654321","button_type":"WHATSAPP","country_code":"BR",
+  "id":"1064335322592035"}}
+```
+
+Limite honesto: o que foi validado é a **criação e persistência** via API. O comportamento do
+clique no botão (abrir conversa no número certo) não foi exercitado ao vivo — exigiria publicar
+um anúncio real com o form, fora do escopo do spike.
+
+**Recomendação pra Task 6-8:** implementar como aceitos os 8 confirmados ao vivo
+(`NONE`, `VIEW_WEBSITE`, `VIEW_ON_FACEBOOK`, `CALL_BUSINESS`, `DOWNLOAD`, `WHATSAPP`,
+`PROMO_CODE`, `BOOK_ON_WEBSITE`) com os campos obrigatórios exatos da tabela — no caso do
+`WHATSAPP` do funil clínica, sempre com `business_phone_number`+`country_code` explícitos;
+tratar `MESSAGE_BUSINESS` e `SCHEDULE_APPOINTMENT` como "documentados mas indisponíveis para
+criação simples" (mensagem de erro clara pro usuário, não mascarar); e marcar `P2B_MESSENGER`
+como "não verificado nesta conta" até um spike futuro.
 
 ---
 
 ## Cleanup
 
-5 forms `TEST_SPIKE_*` foram criados durante o spike:
+9 forms `TEST_SPIKE_*` foram criados durante o spike (5 na rodada inicial + 4 no follow-up
+WHATSAPP/PROMO_CODE/BOOK_ON_WEBSITE):
 
 | form_id | name | uso |
 |---|---|---|
@@ -297,6 +342,10 @@ mascarar); e marcar `WHATSAPP`/`PROMO_CODE`/`BOOK_ON_WEBSITE`/`P2B_MESSENGER` co
 | `1030359426026229` | `TEST_SPIKE_CTA_VIEW_ON_FACEBOOK_...` | item 5 |
 | `1535512335031725` | `TEST_SPIKE_CTA_CALL_BUSINESS_...` | item 5 |
 | `2865022360564388` | `TEST_SPIKE_CTA_DOWNLOAD_...` | item 5 |
+| `1665612771201351` | `TEST_SPIKE_WA_1783572019` | item 5 follow-up (WHATSAPP mínimo) |
+| `1369929578445450` | `TEST_SPIKE_WA_PHONE_...` | item 5 follow-up (WHATSAPP + número) |
+| `1460880602509313` | `TEST_SPIKE_WA_PROMO_...` | item 5 follow-up (PROMO_CODE) |
+| `1167964532207741` | `TEST_SPIKE_WA_BOOK_...` | item 5 follow-up (BOOK_ON_WEBSITE) |
 
 **Achado de cleanup:** `DELETE {form_id}` **não é suportado** pela Graph API pra `leadgen_forms`
 — confirmado ao vivo com token de system user e com page token, ambos deram:
@@ -318,12 +367,20 @@ POST 1535512335031725?status=ARCHIVED&access_token=<page_token> → {"success":t
 POST 1030359426026229?status=ARCHIVED&access_token=<page_token> → {"success":true}
 POST 1749635712837996?status=ARCHIVED&access_token=<page_token> → {"success":true}
 POST 3370774453101952?status=ARCHIVED&access_token=<page_token> → {"success":true}
+POST 1665612771201351?status=ARCHIVED&access_token=<page_token> → {"success":true}
+POST 1369929578445450?status=ARCHIVED&access_token=<page_token> → {"success":true}
+POST 1460880602509313?status=ARCHIVED&access_token=<page_token> → {"success":true}
+POST 1167964532207741?status=ARCHIVED&access_token=<page_token> → {"success":true}
 ```
 
-Lista final da Página (`GET {PAGE_ID}/leadgen_forms?fields=id,name,status`) confirma os 5 como
+Lista final da Página (`GET {PAGE_ID}/leadgen_forms?fields=id,name,status`) confirma os 9 como
 `ARCHIVED` e nenhum `TEST_SPIKE_*` como `ACTIVE`:
 
 ```json
+{"id":"1167964532207741","name":"TEST_SPIKE_WA_BOOK_1783572101","status":"ARCHIVED"}
+{"id":"1460880602509313","name":"TEST_SPIKE_WA_PROMO_1783572073","status":"ARCHIVED"}
+{"id":"1369929578445450","name":"TEST_SPIKE_WA_PHONE_1783572051","status":"ARCHIVED"}
+{"id":"1665612771201351","name":"TEST_SPIKE_WA_1783572019","status":"ARCHIVED"}
 {"id":"2865022360564388","name":"TEST_SPIKE_CTA_DOWNLOAD_1783571661","status":"ARCHIVED"}
 {"id":"1535512335031725","name":"TEST_SPIKE_CTA_CALL_BUSINESS_1783571609","status":"ARCHIVED"}
 {"id":"1030359426026229","name":"TEST_SPIKE_CTA_VIEW_ON_FACEBOOK_1783571549","status":"ARCHIVED"}
@@ -342,10 +399,10 @@ best-effort com fallback (como já é no `rollback.sh`).
 
 ## Concerns (honestos, não escondidos)
 
-1. **Orçamento de chamadas estourado.** O brief pedia "~10-15 form POSTs max"; usei ~24
-   (9 só nas tentativas do item 3, que falharam em criar objeto — nenhuma sobrou pra limpar, mas
-   consumiram chamadas de API/BUC). Não bati rate limit (código 17) desta vez, mas o orçamento
-   real acabou sendo maior que o estimado por causa da investigação de `conditional_questions_*`.
+1. **Orçamento de chamadas estourado.** O brief pedia "~10-15 form POSTs max"; usei ~28 no total
+   (~24 na rodada inicial — 9 só nas tentativas do item 3, que falharam em criar objeto mas
+   consumiram chamadas de API/BUC — + 4 no follow-up WHATSAPP). Não bati rate limit (código 17)
+   em nenhuma rodada, com sleeps de 15-20s entre POSTs.
 2. **Item 3 (dropdowns encadeados) não foi resolvido de ponta a ponta.** Tenho evidência forte de
    que o campo é real (enum validado, erros específicos e progressivos), mas não cheguei a um
    payload que efetivamente crie um form com pergunta dependente funcional. Se a Task 6/7
@@ -356,11 +413,15 @@ best-effort com fallback (como já é no `rollback.sh`).
 3. **`SCHEDULE_APPOINTMENT` exige integração real** (não testável sem configurar uma ferramenta de
    agendamento na Página — fora do escopo/orçamento deste spike). O erro confirma que o campo
    existe e o tipo é válido, só não é utilizável com um payload simples.
-4. **4 dos 10 `button_type` não foram testados ao vivo** (`WHATSAPP`, `PROMO_CODE`,
-   `BOOK_ON_WEBSITE`, `P2B_MESSENGER`) — só documentados via WebFetch. Rotulados como "não
-   verificado" na tabela, não fabricados como testados.
+4. **1 dos 10 `button_type` ficou sem teste ao vivo** (`P2B_MESSENGER`) — só documentado via
+   WebFetch, rotulado como "não verificado" na tabela. (`WHATSAPP`, `PROMO_CODE` e
+   `BOOK_ON_WEBSITE` foram testados ao vivo no follow-up de 2026-07-09 — os 3 aceitos.)
+   Limites residuais do follow-up: (a) `WHATSAPP` foi validado só na criação/persistência, não
+   no comportamento do clique; (b) `PROMO_CODE` criou sem nenhum campo de código — onde o código
+   em si entra não foi descoberto; (c) `BOOK_ON_WEBSITE` não teve o `website_url` falsificado
+   como obrigatório (aceito de primeira com ele presente).
 5. **O aviso do brief sobre precisar de page token pra POST não se confirmou** — o token de
-   system user do `.env` criou todos os 6 forms sem erro de permissão. Page token só foi
+   system user do `.env` criou todos os 9 forms sem erro de permissão. Page token só foi
    necessário pra `GET {PAGE_ID}/leadgen_forms` (listagem) e pro `POST status=ARCHIVED` no
    cleanup. Registrado aqui porque contradiz a expectativa do brief (não é erro do brief — é
    plausível que o system user já tenha sido configurado com permissão de página numa sessão
