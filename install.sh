@@ -135,7 +135,7 @@ now = datetime.now(timezone.utc).isoformat().replace('+00:00','Z')
 d.setdefault('plugins', {})['meta-ads-pro@local'] = [{
     'scope': 'user',
     'installPath': install_path,
-    'version': '1.0.4',
+    'version': '1.1.0',
     'installedAt': now,
     'lastUpdated': now
 }]

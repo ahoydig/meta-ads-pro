@@ -98,7 +98,7 @@ Imprimir as 4 boxes BYTE-EXATO abaixo:
 │                                                               │
 │  1. /meta-ads-setup   → valida token + descobre recursos      │
 │                         + salva .env e CLAUDE.md              │
-│  2. /meta-ads-doctor  → 10 checks de preflight                │
+│  2. /meta-ads-doctor  → 14 checks de preflight                │
 │  3. /meta-ads-menu    → volta pra cá, vê todos os comandos    │
 └───────────────────────────────────────────────────────────────┘
 

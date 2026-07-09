@@ -47,6 +47,8 @@ _assert_eq() {
 }
 
 # Gera payload de adset SEM promoted_object (usado por WEBSITE)
+# daily_budget: 600 — > min_daily_budget real (522), mesma folga dos payloads live
+# do arquivo (ver nota "daily_budget bump 518→600" antes da seção 5 DESTINOS).
 _mk_adset_payload_no_po() {
   local dt="$1" og="$2"
   jq -nc --arg dt "$dt" --arg og "$og" '{
@@ -65,6 +67,7 @@ _mk_adset_payload_no_po() {
 }
 
 # Gera payload de adset COM promoted_object.page_id
+# daily_budget: 600 — > min_daily_budget real (522), mesma folga (ver nota acima).
 _mk_adset_payload_with_po_page() {
   local dt="$1" og="$2" page="$3"
   jq -nc --arg dt "$dt" --arg og "$og" --arg p "$page" '{

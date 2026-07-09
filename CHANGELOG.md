@@ -107,6 +107,11 @@ novas de `bid_strategy`, cleanup robusto, lint estendido a `tests/*.sh`).
   (rejeitado sob `OUTCOME_LEADS` — o helper compartilhado do arquivo usa o mesmo
   objective pra todos os 5 destinos, sem mapear destino→objective). `run_all.sh`
   completo para no layer da `06` por causa deles — documentado, não corrigido.
+- **`tests/06` `test_adset_destination_whatsapp` em SKIP permanente** — o teste ainda
+  consulta `connected_whatsapp_business_account`, o mesmo campo removido pela API que
+  motivou o fix do guard em `flows/conjuntos/SKILL.md`; sem substituto de leitura
+  conhecido, o SKIP fica até a Meta expor um campo equivalente (ou o teste ser
+  redesenhado pra validar o destino sem o guard).
 - **T23 (validação e2e ponta a ponta) pendente de 3 ações humanas**: rota pública do
   tunnel Cloudflare pro webhook receiver (`webhooks.ahoy.digital/meta-leads`, painel
   Cloudflare Zero Trust — gerenciado remotamente, sem config local editável), App

@@ -175,9 +175,8 @@ test_02_image_crops() {
   # shellcheck source=../lib/upload_media.sh disable=SC1091
   source "$PLUGIN_ROOT/lib/upload_media.sh"
   local fixture hash payload r cid
-  # shellcheck disable=SC2012  # nome de fixture fixo (sem glob real); ls|head é só pra tolerar ausência do arquivo
-  fixture=$(ls "$PLUGIN_ROOT"/tests/fixtures/seed_1080x1920.jpg 2>/dev/null | head -1)
-  [[ -n "$fixture" ]] || { _skip "test_02_image_crops" "sem fixture seed_1080x1920.jpg"; return 0; }
+  fixture="$PLUGIN_ROOT/tests/fixtures/seed_1080x1920.jpg"
+  [[ -f "$fixture" ]] || { _skip "test_02_image_crops" "sem fixture seed_1080x1920.jpg"; return 0; }
   hash=$(upload_image "$fixture") || _fail "test_02_image_crops" "upload falhou"
   payload=$(jq -nc --arg pid "$PAGE_ID" --arg h "$hash" '{
     name:"TEST_crops",
@@ -215,11 +214,9 @@ test_03_asset_customization_rules() {
   # shellcheck source=../lib/upload_media.sh disable=SC1091
   source "$PLUGIN_ROOT/lib/upload_media.sh"
   local f1 f2 h1 h2 payload r cid
-  # shellcheck disable=SC2012  # nomes de fixture fixos (sem glob real); ls|head é só pra tolerar ausência do arquivo
-  f1=$(ls "$PLUGIN_ROOT"/tests/fixtures/seed_1080.jpg 2>/dev/null | head -1)
-  # shellcheck disable=SC2012
-  f2=$(ls "$PLUGIN_ROOT"/tests/fixtures/seed_1080x1920.jpg 2>/dev/null | head -1)
-  [[ -n "$f1" && -n "$f2" ]] || { _skip "test_03_asset_customization_rules" "sem fixtures 1080"; return 0; }
+  f1="$PLUGIN_ROOT/tests/fixtures/seed_1080.jpg"
+  f2="$PLUGIN_ROOT/tests/fixtures/seed_1080x1920.jpg"
+  [[ -f "$f1" && -f "$f2" ]] || { _skip "test_03_asset_customization_rules" "sem fixtures 1080"; return 0; }
   h1=$(upload_image "$f1") || _fail "test_03_asset_customization_rules" "upload f1 falhou"
   h2=$(upload_image "$f2") || _fail "test_03_asset_customization_rules" "upload f2 falhou"
   payload=$(jq -nc --arg pid "$PAGE_ID" --arg h1 "$h1" --arg h2 "$h2" '{
@@ -268,9 +265,8 @@ test_05_carousel() {
   # shellcheck source=../lib/upload_media.sh disable=SC1091
   source "$PLUGIN_ROOT/lib/upload_media.sh"
   local fixture hash payload r cid
-  # shellcheck disable=SC2012  # nome de fixture fixo (sem glob real); ls|head é só pra tolerar ausência do arquivo
-  fixture=$(ls "$PLUGIN_ROOT"/tests/fixtures/seed_1080.jpg 2>/dev/null | head -1)
-  [[ -n "$fixture" ]] || { _skip "test_05_carousel" "sem fixture seed_1080.jpg"; return 0; }
+  fixture="$PLUGIN_ROOT/tests/fixtures/seed_1080.jpg"
+  [[ -f "$fixture" ]] || { _skip "test_05_carousel" "sem fixture seed_1080.jpg"; return 0; }
   hash=$(upload_image "$fixture") || _fail "test_05_carousel" "upload falhou"
   payload=$(jq -nc --arg pid "$PAGE_ID" --arg h "$hash" '{
     name:"TEST_carousel",
