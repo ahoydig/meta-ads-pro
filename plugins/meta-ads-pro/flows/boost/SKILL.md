@@ -163,10 +163,15 @@ Mesmo padrão de `flows/anuncios/SKILL.md` Passos 11-12:
 └───┴────────────────────────────┴─────────────────┴───────────────────────────────┘
 
 🔗 Ads Manager: https://adsmanager.facebook.com/adsmanager/manage/ads?act=<account>&selected_ad_ids=<id>
-🔗 Preview: graph_api GET "{ad_id}/previews?ad_format=INSTAGRAM_STANDARD" → abre o iframe retornado
+
+Gerando preview oficial (post real renderizado)... aberto no browser.
 
 Quer ativar? [s/n]
 ```
+
+**Preview oficial é o default no boost (Task 14):** logo após criar o ad (antes de perguntar "Quer ativar?"), chama `preview_meta_oficial <creative_id> INSTAGRAM_STANDARD` (`lib/visual-preview.sh`) — usa o `creative_id` do Passo 5 (não precisa montar spec inline, o creative já existe). Formato default `INSTAGRAM_STANDARD`; se a mídia original for Reel/Story, usar `INSTAGRAM_REELS`/`INSTAGRAM_STORY` no lugar (conforme `media_product_type` lido no Passo 2). Abre automaticamente no browser (`open`/`xdg-open`) o HTML com o iframe oficial — sem perguntar antes (diferente do fluxo `anuncios`, onde o preview é opcional/perguntado). Faz sentido ser default aqui, e não em `anuncios`: o boost sempre referencia um `creative_id` já existente (sem spec pra montar, sem passo extra de escolha), e o preview fiel é o jeito mais direto de confirmar que o ad referencia o post orgânico certo antes de ativar.
+
+Se o preview oficial falhar (ex.: rate limit momentâneo), cai pro fallback manual: `graph_api GET "{ad_id}/previews?ad_format=INSTAGRAM_STANDARD"` → abre o iframe retornado manualmente. Não bloqueia o fluxo — é só visual, o ad já foi criado (PAUSED) nesse ponto; a pergunta "Quer ativar?" segue normalmente mesmo se o preview falhar.
 
 **Ressalva sobre o preview (spike seção 3.4):** o formato `INSTAGRAM_STANDARD` confirma visualmente que o anúncio referencia o post/carrossel original (handle, selo "Anúncio", mesmo conteúdo), mas **não exibe contagem numérica** de curtidas/comentários (só ícones) — isso é comportamento padrão do preview, não falha do creative. O social proof real (curtidas/comentários) vive no post referenciado e é visível via `like_count`/`comments_count` do Passo 2, ou abrindo o `permalink` direto.
 
@@ -188,7 +193,7 @@ Se `s` (ativar): `POST /{campaign_id} {"status":"ACTIVE"}` (se criada agora) →
 - `lib/nomenclatura.sh` — `gen_name` pro nome do creative/ad
 - `lib/rollback.sh` — `manifest_add` / `rollback_run`
 - `lib/preflight.sh` — pre-flight silencioso quando invocada direta
-- `lib/visual-preview.sh` — preview ASCII (reaproveita o mesmo helper de `flows/anuncios`)
+- `lib/visual-preview.sh` — preview ASCII (reaproveita o mesmo helper de `flows/anuncios`) + `preview_meta_oficial` (default deste flow, Task 14)
 
 ## Referência
 

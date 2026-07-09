@@ -223,19 +223,30 @@ ASCII tree default (inline, rápido):
 └──────────────────────────────────────────────────────────┘
 ```
 
-Se user digitar `preview visual` ou responder `p`:
-- `preview_html` (via `lib/_py/preview_html.py` stdin-safe) gera HTML 375×812
-- `open`/`xdg-open`/`cmd.exe start` conforme OS
+Depois do ASCII, pergunta qual preview visual (se algum):
+
+```
+Preview visual?
+  [n] Nenhum, seguir (default)
+  [p] Local (HTML mock) — rápido, offline, aproximado
+  [o] Oficial Meta (generatepreviews) — fiel ao anúncio real, requer chamada à API
+
+Escolha [n/p/o]:
+```
+
+- `[p]` Local: `preview_html` (via `lib/_py/preview_html.py` stdin-safe) gera HTML 375×812 mock, `open`/`xdg-open`/`cmd.exe start` conforme OS. Instantâneo, offline, mas é aproximação — não reflete 100% do que a Meta vai renderizar.
+- `[o]` Oficial: `preview_meta_oficial {creative_spec}` (`lib/visual-preview.sh`, Task 14) chama `generatepreviews` de verdade e monta HTML com o(s) iframe(s) oficiais da Meta — um `<h2>` por `ad_format` (ex.: `MOBILE_FEED_STANDARD` pra Normal, `INSTAGRAM_STANDARD`/`INSTAGRAM_STORY`/`INSTAGRAM_REELS` conforme posicionamento escolhido). Mais fiel, mas custa 1 chamada GET por formato — não usar em loop apertado.
 
 ### Passo 9 — Confirmação explícita
 
 ```
-Confirma criação de N ad(s)? [s/n/p=preview visual] [s]:
+Confirma criação de N ad(s)? [s/n/p=preview local/o=preview oficial] [s]:
 ```
 
 - `s` → vai pro passo 10
 - `n` → cancela (nada criado ainda, rollback não necessário)
-- `p` → gera HTML, abre browser, volta a perguntar
+- `p` → gera HTML local (mock), abre browser, volta a perguntar
+- `o` → gera HTML com preview oficial Meta (`preview_meta_oficial`), abre browser, volta a perguntar
 
 ### Passo 10 — Criação (diverge em 2 caminhos por app mode)
 
@@ -355,7 +366,7 @@ Ver `lib/error-catalog.yaml` e `lib/error-resolver.sh`:
 - `lib/humanizer-bridge.sh` — humanize_text, humanize_array com 3 fallbacks
 - `lib/error-resolver.sh` — switch_to_dark_post_flow (fix bug #3)
 - `lib/rollback.sh` — rollback_on_failure automático
-- `lib/visual-preview.sh` — preview_ascii, preview_html (stdin-safe)
+- `lib/visual-preview.sh` — preview_ascii, preview_html (stdin-safe), preview_meta_oficial (iframe oficial via generatepreviews, Task 14)
 - `lib/nomenclatura.sh` — gen_name pra criativos (suporta `{nome-criativo}` com hífen)
 
 ## Flags CLI
