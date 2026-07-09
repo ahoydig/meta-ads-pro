@@ -254,6 +254,30 @@ echo "$payload" | jq -e '.thank_you_page and .disqualified_thank_you_page' >/dev
   || { echo "✗ thank you dupla obrigatória"; exit 1; }
 ```
 
+### Passo 8.5 — Tracking parameters (OBRIGATÓRIO)
+
+Todo form leva `tracking_parameters` — key-values que a Meta devolve grudados em
+CADA lead (via API/webhook; conferir no GHL o que a integração nativa mapeia).
+
+```bash
+source "$CLAUDE_PLUGIN_ROOT/lib/utm.sh"
+tp=$(build_tracking_parameters "$form_name")
+payload=$(echo "$payload" | jq --argjson tp "$tp" '. + {tracking_parameters:$tp}')
+```
+
+Formato validado ao vivo no spike `docs/spikes/2026-07-leadform-avancado.md` (seção 1):
+o POST aceita **objeto JSON** `{chave: valor}` (é isso que `build_tracking_parameters`
+gera em `lib/utm.sh`); no GET, o mesmo dado volta como **array de pares**
+`[{"key":"...","value":"..."}]`, não como o objeto original — round-trip confirmado
+ao vivo lá e reconfirmado no teste `test_14_tracking_parameters_roundtrip`
+(`tests/08-lead-forms.sh`). Qualquer código que ler `tracking_parameters` de volta da
+API (parser de lead, `--edit`) precisa tratar esse formato de array, não o objeto de
+entrada. Achado extra do mesmo spike: no lead em si, cada chave do
+`tracking_parameters` vira **um campo próprio em `field_data`** (lado a lado com
+`full_name`/`email`/etc.), não uma seção separada.
+
+Mostrar os valores ao usuário no resumo pré-POST.
+
 ### Passo 9 — POST + manifest
 
 ```bash
@@ -272,7 +296,12 @@ Payload final (montado via `jq -n`, nunca via heredoc):
   "thank_you_page": {...},
   "disqualified_thank_you_page": {...},
   "privacy_policy": {"url": "https://..."},
-  "follow_up_action_url": "https://...?utm_source=meta-leadform&utm_medium=trafego-pago&utm_campaign=20260424_form-clinica"
+  "follow_up_action_url": "https://...?utm_source=meta-leadform&utm_medium=trafego-pago&utm_campaign=20260424_form-clinica",
+  "tracking_parameters": {
+    "utm_source": "meta-leadform",
+    "utm_medium": "trafego-pago",
+    "utm_campaign": "20260424_form-clinica"
+  }
 }
 ```
 
@@ -330,7 +359,7 @@ Remove do manifest.
 5. **Page token** obrigatório pra POST (não user token).
 6. **Zero echo/printf com `$META_ACCESS_TOKEN`** — usar sempre via `graph_api`.
 7. **Labels/options user-controlled passam via `jq --arg` ou stdin**, nunca heredoc (FU-1).
-8. **UTM estático obrigatório** em `thank_you_page.website_url`, `disqualified_thank_you_page.website_url` e `follow_up_action_url` (passos 7-8 + payload final). Padrão: `utm_source=meta-leadform&utm_medium=trafego-pago&utm_campaign={YYYYMMDD}_{form-slug}` via `lib/utm.sh::build_utm_url_static`. Lead form não aceita macros `{{}}` — Meta resolve URL no submit, não no leilão.
+8. **UTM estático obrigatório** em `thank_you_page.website_url`, `disqualified_thank_you_page.website_url` e `follow_up_action_url` (passos 7-8 + payload final). Padrão: `utm_source=meta-leadform&utm_medium=trafego-pago&utm_campaign={YYYYMMDD}_{form-slug}` via `lib/utm.sh::build_utm_url_static`. Lead form não aceita macros `{{}}` — Meta resolve URL no submit, não no leilão. **`tracking_parameters` também obrigatório** (passo 8.5) via `lib/utm.sh::build_tracking_parameters` — objeto JSON `{chave: valor}` no POST; volta como array `[{key,value}]` no GET e vira campo próprio no `field_data` de cada lead (formato validado ao vivo no spike `docs/spikes/2026-07-leadform-avancado.md`, seção 1).
 
 ## Erros específicos
 
