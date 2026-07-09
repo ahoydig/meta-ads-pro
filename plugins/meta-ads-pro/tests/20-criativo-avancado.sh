@@ -18,10 +18,19 @@
 #     preview_meta_oficial (creative_id em vez de spec inline). GET puro,
 #     zero custo de escrita, zero criação.
 #
-# Orçamento de chamadas: 100% GET (generatepreviews + previews + listagem de
-# adcreatives). Nenhum POST/DELETE nesta task — o array/trap de cleanup abaixo
-# existem só pra servir de base às tasks seguintes (T15/T16) que vão criar
-# creatives de verdade neste arquivo.
+# Orçamento de chamadas (Task 14): 100% GET (generatepreviews + previews +
+# listagem de adcreatives). Nenhum POST/DELETE.
+#
+# Task 15 acrescenta (mesmo arquivo, nomes `test_02_image_crops` e
+# `test_03_asset_customization_rules` conforme o brief — não confundir com
+# `test_02_generatepreviews_instagram_standard`/`test_03_previews_existing_creative_id`
+# acima, que são da Task 14):
+#   - test_02_image_crops: creative Normal com `image_crops` (crop 1:1
+#     explícito de uma fixture retrato). 1 upload + 1 POST /adcreatives + 1 GET.
+#   - test_03_asset_customization_rules: creative Dinâmico com
+#     `asset_feed_spec.asset_customization_rules` (imagem por grupo de
+#     placements via adlabels). 2 uploads + 1 POST /adcreatives.
+# Ambos usam o array `created_creatives` + trap de cleanup (DELETE no EXIT).
 #
 # Bash 3.2 portable. shellcheck clean (disables documentados).
 
@@ -136,9 +145,93 @@ test_04_preview_meta_oficial_gera_html() {
   _pass "test_04_preview_meta_oficial_gera_html ($html_path)"
 }
 
+# ─── Test 02 (nome do brief da Task 15): creative Normal com image_crops ──────
+# Crop 1:1 centrado. A fixture real (`tests/fixtures/`) não tem uma imagem
+# 1200x800 como o brief original supunha — só `seed_1080.jpg` (1080x1080,
+# já quadrada) e `seed_1080x1920.jpg` (1080x1920, retrato). Usamos a retrato
+# pra exercitar o crop de verdade: janela quadrada central de 1080x1080 dentro
+# dos 1080x1920 tem margem superior (1920-1080)/2 = 420px → [[0,420],[1080,1500]].
+# Key "100x100" = aspect ratio alvo 1:1 (não é tamanho em px).
+#
+# DIVERGÊNCIA vs. o brief: `image_crops` **não** funciona como campo top-level
+# do creative (testado ao vivo — POST aceita e devolve 201, mas o GET seguinte
+# retorna objeto vazio; a Meta ignora silenciosamente). O campo real precisa
+# estar ANINHADO dentro de `object_story_spec.link_data.image_crops` — só aí
+# persiste e some a espelhar também no `image_crops` top-level no GET. Doc
+# oficial (ads-commerce/marketing-api/image-crops) confirma esse shape.
+# Ver apêndice em docs/spikes/2026-07-api-version.md.
+test_02_image_crops() {
+  if ! _need_env; then
+    _skip "test_02_image_crops" "sem env"; return 0
+  fi
+  # shellcheck source=../lib/graph_api.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/graph_api.sh"
+  # shellcheck source=../lib/upload_media.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/upload_media.sh"
+  local fixture hash payload r cid
+  fixture=$(ls "$PLUGIN_ROOT"/tests/fixtures/seed_1080x1920.jpg 2>/dev/null | head -1)
+  [[ -n "$fixture" ]] || { _skip "test_02_image_crops" "sem fixture seed_1080x1920.jpg"; return 0; }
+  hash=$(upload_image "$fixture") || _fail "test_02_image_crops" "upload falhou"
+  payload=$(jq -nc --arg pid "$PAGE_ID" --arg h "$hash" '{
+    name:"TEST_crops",
+    object_story_spec:{page_id:$pid,
+      link_data:{message:"crop test", link:"https://ahoy.digital", image_hash:$h,
+        image_crops:{"100x100":[[0,420],[1080,1500]]}}}}')
+  r=$(graph_api POST "${AD_ACCOUNT_ID}/adcreatives" "$payload") \
+    || _fail "test_02_image_crops" "POST falhou: $r"
+  cid=$(echo "$r" | jq -r .id); created_creatives+=("$cid")
+  graph_api GET "${cid}?fields=image_crops" | jq -e '.image_crops["100x100"]' >/dev/null \
+    || _fail "test_02_image_crops" "image_crops não persistiu"
+  _pass "test_02_image_crops (cid=$cid)"
+}
+
+# ─── Test 03 (nome do brief da Task 15): asset_customization_rules ────────────
+# asset_feed_spec com 2 imagens rotuladas via adlabels (img_feed / img_story) +
+# 2 asset_customization_rules que direcionam cada imagem pra um grupo de
+# placements (feed vs story). Fixtures reais: seed_1080.jpg (f1) e
+# seed_1080x1920.jpg (f2) — os globs do brief original (`*1080x1080*.jpg`) não
+# batiam com o nome real das fixtures, corrigido pros nomes literais.
+test_03_asset_customization_rules() {
+  if ! _need_env; then
+    _skip "test_03_asset_customization_rules" "sem env"; return 0
+  fi
+  # shellcheck source=../lib/graph_api.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/graph_api.sh"
+  # shellcheck source=../lib/upload_media.sh disable=SC1091
+  source "$PLUGIN_ROOT/lib/upload_media.sh"
+  local f1 f2 h1 h2 payload r cid
+  f1=$(ls "$PLUGIN_ROOT"/tests/fixtures/seed_1080.jpg 2>/dev/null | head -1)
+  f2=$(ls "$PLUGIN_ROOT"/tests/fixtures/seed_1080x1920.jpg 2>/dev/null | head -1)
+  [[ -n "$f1" && -n "$f2" ]] || { _skip "test_03_asset_customization_rules" "sem fixtures 1080"; return 0; }
+  h1=$(upload_image "$f1") || _fail "test_03_asset_customization_rules" "upload f1 falhou"
+  h2=$(upload_image "$f2") || _fail "test_03_asset_customization_rules" "upload f2 falhou"
+  payload=$(jq -nc --arg pid "$PAGE_ID" --arg h1 "$h1" --arg h2 "$h2" '{
+    name:"TEST_asset_custom",
+    object_story_spec:{page_id:$pid},
+    asset_feed_spec:{
+      images:[{hash:$h1, adlabels:[{name:"img_feed"}]},
+              {hash:$h2, adlabels:[{name:"img_story"}]}],
+      bodies:[{text:"corpo"}], titles:[{text:"titulo"}],
+      link_urls:[{website_url:"https://ahoy.digital"}],
+      call_to_action_types:["LEARN_MORE"],
+      ad_formats:["SINGLE_IMAGE"],
+      asset_customization_rules:[
+        {customization_spec:{publisher_platforms:["facebook","instagram"],
+           facebook_positions:["feed"], instagram_positions:["stream"]},
+         image_label:{name:"img_feed"}},
+        {customization_spec:{publisher_platforms:["facebook","instagram"],
+           facebook_positions:["story"], instagram_positions:["story"]},
+         image_label:{name:"img_story"}}]}}')
+  r=$(graph_api POST "${AD_ACCOUNT_ID}/adcreatives" "$payload") \
+    || _fail "test_03_asset_customization_rules" "POST falhou: $r"
+  cid=$(echo "$r" | jq -r .id); created_creatives+=("$cid")
+  _pass "test_03_asset_customization_rules (cid=$cid)"
+}
+
 # ─── Execução ───────────────────────────────────────────────────────────────
-# sleep leve entre testes — todos são GET (baratos), mas outro track pode usar
-# a mesma conta (ver nota no brief da task).
+# sleep leve entre testes GET (baratos); sleep maior antes dos testes que
+# escrevem (upload + adcreatives, T15) — outro track pode usar a mesma conta
+# (ver nota no brief da task).
 test_01_generatepreviews
 sleep "${CRIATIVO_TEST_READ_SLEEP:-5}"
 test_02_generatepreviews_instagram_standard
@@ -146,6 +239,10 @@ sleep "${CRIATIVO_TEST_READ_SLEEP:-5}"
 test_03_previews_existing_creative_id
 sleep "${CRIATIVO_TEST_READ_SLEEP:-5}"
 test_04_preview_meta_oficial_gera_html
+sleep "${CRIATIVO_TEST_WRITE_SLEEP:-15}"
+test_02_image_crops
+sleep "${CRIATIVO_TEST_WRITE_SLEEP:-15}"
+test_03_asset_customization_rules
 
 echo ""
 echo "20-criativo-avancado: ${PASS} passou, ${FAIL} falhou, ${SKIP} pulados"

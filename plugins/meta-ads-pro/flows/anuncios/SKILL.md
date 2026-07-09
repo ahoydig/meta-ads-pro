@@ -101,7 +101,7 @@ Detecta automático:
 - Dimensão: `_detect_image_dims` (sips -g ou identify)
 - Spec por posicionamento (feed 1080×1080, stories/reels 1080×1920)
 
-Se fora de spec:
+Se fora de spec (resolução insuficiente):
 
 ```
 ⚠ Imagem 500×500 — mínimo pra feed é 1080×1080.
@@ -109,6 +109,62 @@ Quer que eu redimensione automaticamente? [s/N]
 ```
 
 Se sim → `resize_if_needed` (sips no macOS, ImageMagick no Linux/WSL).
+
+**Se fora de spec por aspect ratio, não por resolução (Task 15):** quando a imagem já
+tem resolução suficiente mas o aspect ratio nativo diverge do alvo do placement (ex.:
+retrato 1080×1920 pra um placement 1:1 de feed, ou uma foto 1200×800 landscape pra
+1:1/9:16), resize sozinho distorce (stretch) ou faz letterbox. Oferece crop explícito
+como alternativa:
+
+```
+⚠ Imagem 1080×1920 (9:16) não bate com o alvo 1:1 (feed).
+
+[r] Redimensionar (resize/stretch pro alvo — pode distorcer)
+[c] Crop explícito (corta uma janela 1:1 centrada — sem distorcer, perde borda)
+[n] Manter como está (deixa a Meta aplicar o crop automático dela)
+
+Escolha [r/c/n]:
+```
+
+Se `[c]`:
+1. Calcula a janela centrada pro aspect alvo a partir de `_detect_image_dims`
+   (largura×altura originais):
+   - Alvo mais estreito/quadrado que a original → corta os lados: `nova_largura =
+     altura_original × aspect_alvo`; `margem_x = (largura_original − nova_largura) / 2`;
+     janela = `[[margem_x, 0], [margem_x + nova_largura, altura_original]]`.
+   - Alvo mais largo que a original → corta topo/base: `nova_altura = largura_original
+     ÷ aspect_alvo`; `margem_y = (altura_original − nova_altura) / 2`; janela =
+     `[[0, margem_y], [largura_original, margem_y + nova_altura]]`.
+   - Exemplo real (testado ao vivo, Task 15 — `tests/20-criativo-avancado.sh
+     test_02_image_crops`): fixture 1080×1920 → alvo 1:1 → `margem_y = (1920−1080)/2 =
+     420` → janela `[[0,420],[1080,1500]]`.
+2. Monta `image_crops` — chave é o aspect ratio alvo no formato `"WxH"` (ex.:
+   `"100x100"` = 1:1, **testado ao vivo**; outras razões seguem a mesma convenção da
+   [doc oficial de crops](https://developers.facebook.com/documentation/ads-commerce/marketing-api/image-crops),
+   mas não foram testadas nesta task — `[não verificado]`).
+
+   ⚠ **Divergência achada ao vivo (Task 15):** `image_crops` **não** funciona como
+   campo top-level do creative — a Meta aceita o POST (retorna 201 com `id`), mas
+   ignora o campo em silêncio (o GET seguinte devolve objeto vazio, sem erro). Só
+   persiste **aninhado dentro de `object_story_spec.link_data.image_crops`**:
+
+   ```json
+   {
+     "object_story_spec": {
+       "page_id": "...",
+       "link_data": {
+         "image_hash": "...",
+         "link": "...",
+         "message": "...",
+         "image_crops": {"100x100": [[0, 420], [1080, 1500]]}
+       }
+     }
+   }
+   ```
+
+   Depois de persistido, o GET espelha o valor tanto em `image_crops` (campo
+   top-level, read-only) quanto dentro de `object_story_spec.link_data.image_crops`.
+   Ver apêndice em `docs/spikes/2026-07-api-version.md`.
 
 ### Passo 6 — Geração de copy (opcional, granular)
 
@@ -285,6 +341,70 @@ Pra cada combo (imagem/vídeo + copy) em Normal, OU uma única vez em Dinâmico:
 ```
 
 **Nunca** cria N×M ads em Dinâmico. Asset feed já combina automaticamente.
+
+#### Placement customization (Task 15, só em modo Dinâmico)
+
+Pergunta adicional, depois de montar o `asset_feed_spec` base:
+
+```
+Imagens diferentes por posicionamento? [s/N]
+```
+
+Se `s`:
+1. Coleta pares imagem ↔ grupo de placements (ex.: "imagem A → feed", "imagem B →
+   story"). Um grupo = combinação de `publisher_platforms` + `*_positions` por
+   plataforma (`facebook_positions`, `instagram_positions` — testados ao vivo;
+   `audience_network_positions`/`messenger_positions` seguem a mesma convenção mas
+   **não foram testados** nesta task, `[não verificado]`).
+2. **Regra inviolável:** toda imagem referenciada numa `asset_customization_rules`
+   precisa do `adlabel` correspondente em `asset_feed_spec.images[].adlabels` (mesmo
+   `name` usado em `image_label.name` da rule). Sem o adlabel casando, a rule não tem
+   imagem pra apontar.
+3. Monta `asset_feed_spec.asset_customization_rules`. Payload de referência —
+   **testado ao vivo (Task 15), aceito verbatim, zero correção de sintaxe**:
+
+```json
+{
+  "name": "<nome gerado via nomenclatura>",
+  "object_story_spec": {"page_id": "..."},
+  "asset_feed_spec": {
+    "images": [
+      {"hash": "h1", "adlabels": [{"name": "img_feed"}]},
+      {"hash": "h2", "adlabels": [{"name": "img_story"}]}
+    ],
+    "bodies": [{"text": "corpo"}],
+    "titles": [{"text": "titulo"}],
+    "link_urls": [{"website_url": "https://..."}],
+    "call_to_action_types": ["LEARN_MORE"],
+    "ad_formats": ["SINGLE_IMAGE"],
+    "asset_customization_rules": [
+      {
+        "customization_spec": {
+          "publisher_platforms": ["facebook", "instagram"],
+          "facebook_positions": ["feed"],
+          "instagram_positions": ["stream"]
+        },
+        "image_label": {"name": "img_feed"}
+      },
+      {
+        "customization_spec": {
+          "publisher_platforms": ["facebook", "instagram"],
+          "facebook_positions": ["story"],
+          "instagram_positions": ["story"]
+        },
+        "image_label": {"name": "img_story"}
+      }
+    ]
+  }
+}
+```
+
+- A Meta devolve o `asset_feed_spec` com campos extras auto-preenchidos por ela
+  (`priority` incremental em cada rule, `age_min`/`age_max` dentro de cada
+  `customization_spec`, `optimization_type: "PLACEMENT"`) — **não enviar** esses
+  campos no payload, são só enriquecimento no round-trip do GET.
+- `image_label` referencia o adlabel pelo `name` (não pelo `hash` da imagem
+  diretamente) — é por isso que todo par imagem↔placement passa por um adlabel.
 
 ### Passo 11 — Resumo + links
 
