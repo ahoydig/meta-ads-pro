@@ -25,7 +25,7 @@ check_token_valid() {
 check_token_expiration() {
   local token="${META_ACCESS_TOKEN:?}"
   local r
-  r=$(curl -s "https://graph.facebook.com/v25.0/debug_token?input_token=$token&access_token=$token")
+  r=$(curl -s "https://graph.facebook.com/${META_API_VERSION:-v25.0}/debug_token?input_token=$token&access_token=$token")
   local exp
   exp=$(echo "$r" | jq -r '.data.expires_at // 0')
   if [[ "$exp" == "0" ]]; then
@@ -46,7 +46,7 @@ check_token_expiration() {
 check_scopes() {
   local token="${META_ACCESS_TOKEN:?}"
   local r
-  r=$(curl -s "https://graph.facebook.com/v25.0/debug_token?input_token=$token&access_token=$token")
+  r=$(curl -s "https://graph.facebook.com/${META_API_VERSION:-v25.0}/debug_token?input_token=$token&access_token=$token")
   local missing=()
   local scopes_required=("ads_management" "ads_read" "business_management" "leads_retrieval" "pages_manage_ads")
   for s in "${scopes_required[@]}"; do
@@ -113,7 +113,7 @@ check_rate_limit_buc() {
   local account="${AD_ACCOUNT_ID:?}"
   local token="${META_ACCESS_TOKEN:?}"
   local header
-  header=$(curl -sI "https://graph.facebook.com/v25.0/$account?fields=id&access_token=$token" \
+  header=$(curl -sI "https://graph.facebook.com/${META_API_VERSION:-v25.0}/$account?fields=id&access_token=$token" \
     | grep -i "x-business-use-case-usage" || true)
   [[ -z "$header" ]] && { echo "✓ Rate limit: baixo"; return 0; }
 
