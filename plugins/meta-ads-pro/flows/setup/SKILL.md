@@ -147,12 +147,21 @@ Usa valores retornados (ex: Flávio tem `America/Recife` / `BRL` / `518` — nã
 
 ### Passo 10 — Perguntar nomenclatura
 
+**Pergunta obrigatória de degrau (S/n) — não pula direto pras opções:**
+
 ```
-Qual padrão de nomenclatura você usa?
+Você tem um padrão de nomenclatura próprio pra campanhas/conjuntos/anúncios? [S/n] [N]:
+```
+
+- `n` (default) → usa `ahoy-style` automaticamente. Salva `nomenclatura_style: ahoy-style` no CLAUDE.md e pula pro Passo 11. Mostra: `OK, vou usar o padrão ahoy-style: ahoy_YYYYMMDD_produto_objetivo_destino_opt_publico`.
+- `S` → mostra as 3 opções:
+
+```
+Qual padrão você usa?
 
 [1] ahoy-style — ahoy_YYYYMMDD_produto_objetivo_destino_opt_publico
-[2] enxuto — YYYYMMDD-produto-objetivo
-[3] custom — cola um exemplo e eu extraio o pattern
+[2] enxuto    — YYYYMMDD-produto-objetivo
+[3] custom    — cola um exemplo e eu extraio o pattern
 ```
 
 Se [3]:
@@ -160,6 +169,8 @@ Se [3]:
 - `detect_pattern "$amostra"` via lib/nomenclatura.sh
 - Mostra template detectado, confirma
 - Repete pra ad set e ad
+
+**Por que esse degrau:** maior parte dos usuários não tem padrão e fica trancado nas 3 opções. Default `ahoy-style` desbloqueia o fluxo sem decisão.
 
 ### Passo 11 — Salvar CLAUDE.md + criar .meta-ads-initialized
 

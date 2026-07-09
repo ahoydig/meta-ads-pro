@@ -178,6 +178,35 @@ Qual usa?
 
 Pra cada arquivo retorna `image_hash` (32 hex) ou `video_id` (numeric).
 
+### Passo 7.5 — Aplicar UTM dinâmico (OBRIGATÓRIO em link externo)
+
+Antes do preview, injeta UTM em todo `link_url` que aponta pra URL `http(s)://` (site/landing).
+Pula deeplinks (`wa.me/`, `fb-messenger://`, `tel:`, `mailto:`) — Meta não substitui macros nesses.
+
+```bash
+source "$CLAUDE_PLUGIN_ROOT/lib/utm.sh"
+
+# Pra cada link_url coletado nos passos anteriores
+if is_external_url "$link_url"; then
+  link_url=$(build_utm_url_dynamic "$link_url")
+fi
+```
+
+Padrão aplicado (mesma macro da skill `nomenclatura-utm`):
+
+```
+?utm_source={{site_source_name}}&utm_medium=trafego-pago&utm_campaign={{campaign.name}}&utm_term={{adset.name}}&utm_content={{ad.name}}
+```
+
+Aplica em:
+- **Normal:** `object_story_spec.link_data.link` (cada ad)
+- **Dinâmico:** `asset_feed_spec.link_urls[].website_url` (cada variação de link)
+- **Dark post fallback:** `link` do post unpublished
+
+Mostra ao usuário no preview: `🔗 Link com UTM: <url completa>` — confirma transparente.
+
+Se já tiver UTM na URL base, `strip_existing_utm` remove antes de re-aplicar (evita duplicar).
+
 ### Passo 8 — Preview visual
 
 ASCII tree default (inline, rápido):
@@ -286,6 +315,7 @@ Em qualquer falha, rollback reverte tudo na topologia correta (ads → creatives
 5. **Asset feed obrigatório em Dinâmico** — produto cartesiano proibido nesse modo
 6. **Produto cartesiano em Normal** só com flag `--cartesian` **E** confirmação explícita do usuário
 7. **Upload multipart** (`-F source=@file`) — nunca `base64 -i` (BSD-only, quebra em Linux)
+8. **Sempre UTM dinâmico em link externo** (passo 7.5) — `build_utm_url_dynamic` via `lib/utm.sh`. Padrão: `utm_source={{site_source_name}}&utm_medium=trafego-pago&utm_campaign={{campaign.name}}&utm_term={{adset.name}}&utm_content={{ad.name}}`. Pula deeplinks (`wa.me`, `messenger://`, `tel:`).
 
 ## Limites Graph API v25.0 (referência)
 

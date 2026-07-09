@@ -422,6 +422,21 @@ Após 200/201:
 3. Exporta `LAST_ADSET_ID=$adset_id` pra `/meta-ads-anuncios` encadear.
 4. `telemetry_log adset_created id=$adset_id destination=$destination_type optimization=$optimization_goal advantage_audience=0`.
 
+### Passo 12 — Encadear pro anúncio (jornada fim-a-fim)
+
+Conjunto sem anúncio também não veicula. Pergunta sempre:
+
+```
+✓ Conjunto criado (PAUSED). ID: {adset_id}
+
+Continuar pra criar o anúncio agora? [S/n] [S]:
+```
+
+- `S` (default) → invoca `/meta-ads-anuncios` com `LAST_CAMPAIGN_ID` e `LAST_ADSET_ID` no env.
+- `n` → para. Mostra: `Pra continuar depois: /meta-ads-anuncios (vai usar a campanha + conjunto criados).`
+
+**Regra:** mesma da campanha — só pula se `--no-chain`.
+
 ## Listar
 
 ```bash

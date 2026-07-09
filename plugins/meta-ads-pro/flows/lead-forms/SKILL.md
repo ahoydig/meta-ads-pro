@@ -183,6 +183,24 @@ CTA button:
   [4] WhatsApp (MESSAGE) — requer número
 ```
 
+**UTM estático em VIEW_URL/DOWNLOAD (OBRIGATÓRIO):**
+
+Lead form NÃO suporta macros `{{campaign.name}}` — Meta resolve URL no momento da criação do form, não no leilão. Aplicar UTM estático:
+
+```bash
+source "$CLAUDE_PLUGIN_ROOT/lib/utm.sh"
+
+if [[ "$button_type" == "VIEW_URL" || "$button_type" == "DOWNLOAD" ]]; then
+  if is_external_url "$website_url"; then
+    today=$(date +%Y%m%d)
+    slug=$(slugify "$form_name")
+    website_url=$(build_utm_url_static "$website_url" "${today}_${slug}" "meta-leadform" "trafego-pago")
+  fi
+fi
+```
+
+Resultado: `https://seusite.com/obrigado?utm_source=meta-leadform&utm_medium=trafego-pago&utm_campaign=20260424_form-clinica`
+
 Payload:
 ```json
 {
@@ -211,6 +229,8 @@ CTA distinto do qualificado:
   [2] Sem CTA (só a mensagem)
 ```
 
+**UTM estático aqui também:** mesmo `build_utm_url_static` usado no passo 7, com slug derivado do form_name. Aplica em qualquer `website_url` externa do CTA desqualificado.
+
 Payload:
 ```json
 {
@@ -219,7 +239,7 @@ Payload:
     "body": "Siga nosso Instagram",
     "button_type": "VIEW_URL",
     "button_text": "Ir pro Instagram",
-    "website_url": "https://instagram.com/foo"
+    "website_url": "https://instagram.com/foo?utm_source=meta-leadform&utm_medium=trafego-pago&utm_campaign=20260424_form-clinica"
   }
 }
 ```
@@ -241,6 +261,8 @@ echo "$payload" | jq -e '.thank_you_page and .disqualified_thank_you_page' >/dev
 graph_api POST "${PAGE_ID}/leadgen_forms" "$payload"
 ```
 
+**`follow_up_action_url` também recebe UTM estático** antes do POST (mesmo pattern do passo 7).
+
 Payload final (montado via `jq -n`, nunca via heredoc):
 ```json
 {
@@ -250,7 +272,7 @@ Payload final (montado via `jq -n`, nunca via heredoc):
   "thank_you_page": {...},
   "disqualified_thank_you_page": {...},
   "privacy_policy": {"url": "https://..."},
-  "follow_up_action_url": "https://..."
+  "follow_up_action_url": "https://...?utm_source=meta-leadform&utm_medium=trafego-pago&utm_campaign=20260424_form-clinica"
 }
 ```
 
@@ -308,6 +330,7 @@ Remove do manifest.
 5. **Page token** obrigatório pra POST (não user token).
 6. **Zero echo/printf com `$META_ACCESS_TOKEN`** — usar sempre via `graph_api`.
 7. **Labels/options user-controlled passam via `jq --arg` ou stdin**, nunca heredoc (FU-1).
+8. **UTM estático obrigatório** em `thank_you_page.website_url`, `disqualified_thank_you_page.website_url` e `follow_up_action_url` (passos 7-8 + payload final). Padrão: `utm_source=meta-leadform&utm_medium=trafego-pago&utm_campaign={YYYYMMDD}_{form-slug}` via `lib/utm.sh::build_utm_url_static`. Lead form não aceita macros `{{}}` — Meta resolve URL no submit, não no leilão.
 
 ## Erros específicos
 

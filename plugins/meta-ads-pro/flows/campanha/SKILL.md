@@ -98,6 +98,21 @@ Após 200/201:
 3. Exporta `LAST_CAMPAIGN_ID=$campaign_id` pra próximas sub-skills encadearem.
 4. Emite evento: `telemetry_log campaign_created id=$campaign_id objective=$objective opt=$opt`.
 
+### Passo 9 — Encadear pro conjunto (jornada fim-a-fim)
+
+Campanha sozinha não veicula. Pergunta sempre:
+
+```
+✓ Campanha criada (PAUSED). ID: {campaign_id}
+
+Continuar pra criar o conjunto de anúncios agora? [S/n] [S]:
+```
+
+- `S` (default) → invoca `/meta-ads-conjuntos` com `LAST_CAMPAIGN_ID` já no env. O conjunto, ao terminar, vai perguntar a mesma coisa pro anúncio.
+- `n` → para aqui. Mostra: `Pra continuar depois: /meta-ads-conjuntos (vai usar a campanha {campaign_id} automaticamente).`
+
+**Regra:** invocação direta de `/meta-ads-campanha` SEMPRE oferece encadeamento. Só pula se user passou flag `--no-chain`.
+
 ## Listar
 
 ```bash
