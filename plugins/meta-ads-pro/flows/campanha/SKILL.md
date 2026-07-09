@@ -77,6 +77,8 @@ Confirma criação? [s/n/p=preview visual]
 
 Se `s` → POST para `${AD_ACCOUNT_ID}/campaigns`:
 
+**Se CBO** (budget na campanha):
+
 ```json
 {
   "name": "{nome}",
@@ -89,8 +91,21 @@ Se `s` → POST para `${AD_ACCOUNT_ID}/campaigns`:
 }
 ```
 
+**Se ABO** (budget no ad set, não na campanha) — payload SEM `bid_strategy` nem `daily_budget`:
+
+```json
+{
+  "name": "{nome}",
+  "objective": "{objetivo}",
+  "status": "PAUSED",
+  "special_ad_categories": [],
+  "is_adset_budget_sharing_enabled": false
+}
+```
+
 - `is_adset_budget_sharing_enabled: false` — **FIX BUG #1** (sempre enviado, mesmo ABO).
 - `daily_budget` — **só se CBO**. Em ABO, omitir o campo (o budget fica no ad set).
+- `bid_strategy` — **só se CBO, mesma regra do `daily_budget`** (achado ao vivo T22): a conta rejeita `bid_strategy` na campanha quando ela não tem `daily_budget` próprio — erro `100/1885737` "Esta campanha não tem orçamento. Adicione um orçamento para editar a estratégia de lance." Em ABO, `bid_strategy` vai no ad set (ver `/meta-ads-conjuntos`, Passo 11 — herda o valor escolhido aqui no Passo 7 via `CAMPAIGN_BID_STRATEGY`), nunca na campanha.
 
 Após 200/201:
 1. Lê `campaign_id` da resposta.
@@ -131,7 +146,7 @@ Renderiza tabela ASCII (id · name · status · objective · budget).
 `/meta-ads-campanha edit {id}` permite alterar:
 - `name`
 - `daily_budget` (só se CBO — valida `>= min_daily_budget`)
-- `bid_strategy`
+- `bid_strategy` (só se CBO — campanha ABO sem `daily_budget` rejeita `bid_strategy` isolado, mesmo erro `100/1885737` do Passo 8)
 
 POST para `${id}` com o(s) campo(s) alterados.
 
@@ -162,6 +177,7 @@ Fluxo:
 - Sempre `is_adset_budget_sharing_enabled: false` (ABO) — fix bug #1.
 - Sempre `special_ad_categories: []` (evita warnings em conta sem categoria especial).
 - `daily_budget` só em CBO; em ABO o campo NÃO vai no payload.
+- `bid_strategy` só em CBO; em ABO o campo NÃO vai no payload da campanha (vive no ad set — ver `/meta-ads-conjuntos`). Achado ao vivo T22: `100/1885737`.
 - DELETE bloqueado se status == ACTIVE.
 - Pode deletar PAUSED diretamente (Meta API aceita).
 
@@ -172,3 +188,4 @@ Ver `lib/error-catalog.yaml`. Campanha:
 - `1487534` — daily_budget < min do account → aumenta pro mínimo da API.
 - `1885183` — campanha em conta dev mode sem app live (fix via `FALLBACK_DARK_POST`).
 - `613/80004` — rate limit → retry automático do `graph_api.sh`.
+- `100/1885737` — `bid_strategy` setado na campanha sem `daily_budget` (campanha ABO) → remover `bid_strategy` do payload da campanha; ele deve ir no ad set (`/meta-ads-conjuntos`, achado ao vivo T22).

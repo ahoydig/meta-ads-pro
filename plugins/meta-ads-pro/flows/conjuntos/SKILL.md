@@ -24,13 +24,14 @@ Assume que o preflight (`lib/preflight.sh`) já rodou via orquestradora e que `C
 Recebe `CAMPAIGN_ID` da orquestradora/user (`LAST_CAMPAIGN_ID` se encadeado depois de `/meta-ads-campanha`). Valida:
 
 ```bash
-graph_api GET "${CAMPAIGN_ID}?fields=id,name,status,objective,is_adset_budget_sharing_enabled,daily_budget"
+graph_api GET "${CAMPAIGN_ID}?fields=id,name,status,objective,is_adset_budget_sharing_enabled,daily_budget,bid_strategy"
 ```
 
 - Campanha tem que existir.
 - Tem que estar `PAUSED` (cria ad set em campanha ativa dispara auto-spend sem revisão).
 - Se `is_adset_budget_sharing_enabled == true` (CBO) → budget é da campanha, ad set não manda `daily_budget`.
 - Se CBO e campanha sem `daily_budget` → erro, aborta (bug #1 do Filipe em variante CBO).
+- Guarda `bid_strategy` da campanha em `CAMPAIGN_BID_STRATEGY` — **se ABO** (`is_adset_budget_sharing_enabled == false`), o ad set PRECISA reenviar esse valor no próprio payload (Passo 11): a conta rejeita POST `/adsets` com budget próprio e sem `bid_strategy` explícito (erro `100/2490487` "valor/restrição de lance obrigatórios para a estratégia de lance", achado ao vivo na T17/T22). Se por algum motivo a campanha vier sem `bid_strategy` (`null`/vazio), usa default `LOWEST_COST_WITHOUT_CAP` (mesmo default do Passo 7 de `/meta-ads-campanha`).
 
 Se invocada direta (sem orquestradora), roda `source lib/preflight.sh; preflight_silent` antes.
 
@@ -419,9 +420,16 @@ payload=$(jq -nc \
   } + (if $sched != null then {pacing_type:["day_parting"], adset_schedule: $sched} else {} end)
     + (if $freq != null then {frequency_control_specs: $freq} else {} end)')
 
-# Se CBO na campanha, REMOVE daily_budget (budget fica na campanha)
+# Se CBO na campanha, REMOVE daily_budget (budget fica na campanha) — bid_strategy
+# fica só na campanha (já setado no Passo 7 de /meta-ads-campanha), sem duplicar no ad set.
+# Se ABO (budget no próprio ad set), o ad set PRECISA de bid_strategy explícito —
+# sem ele a conta rejeita com 100/2490487 "valor/restrição de lance obrigatórios
+# para a estratégia de lance" (achado ao vivo T17/T22). Herda a escolha do
+# Passo 7 (CAMPAIGN_BID_STRATEGY, lido no Passo 1); default LOWEST_COST_WITHOUT_CAP.
 if [[ "$CAMPAIGN_IS_CBO" == "true" ]]; then
   payload=$(echo "$payload" | jq 'del(.daily_budget)')
+else
+  payload=$(echo "$payload" | jq --arg bs "${CAMPAIGN_BID_STRATEGY:-LOWEST_COST_WITHOUT_CAP}" '. + {bid_strategy: $bs}')
 fi
 
 graph_api POST "${AD_ACCOUNT_ID}/adsets" "$payload"
@@ -499,6 +507,7 @@ graph_api GET "{id}?fields=status"
 - WhatsApp destination: checa `connected_whatsapp_business_account` ANTES do POST (evita erro 1838202).
 - Lead Form destination: roda `/meta-ads-lead-forms` antes pra ter `form_id`.
 - CBO (campanha com `is_adset_budget_sharing_enabled=true`): **remove** `daily_budget` do payload do ad set.
+- **ABO (budget próprio no ad set): sempre `bid_strategy` explícito no payload**, herdado de `CAMPAIGN_BID_STRATEGY` (Passo 1) — default `LOWEST_COST_WITHOUT_CAP`. Sem esse campo a conta rejeita com `100/2490487` (achado T17/T22).
 - Geocoding via ViaCEP + Nominatim com fallback pra input manual (offline).
 - Rate limit do Nominatim: `sleep 1` entre requests. User-Agent obrigatório.
 - `pacing_type: ["day_parting"]` só se `adset_schedule` presente.
@@ -518,4 +527,5 @@ Ver `lib/error-catalog.yaml`. Conjuntos:
 - `1487534` — daily_budget < min do account → aumenta pro mínimo.
 - `1487390` — optimization_goal incompatível com objective → user action.
 - `2635` — bid strategy conflitando com campanha → user action.
+- `100/2490487` — `bid_strategy` ausente em ad set com budget próprio (ABO) → sempre reenviar o valor de `CAMPAIGN_BID_STRATEGY` (Passo 1) no payload do ad set (Passo 11); nunca omitir em ABO.
 - `613/80004/17` — rate limit → retry automático (`graph_api.sh` + BUC header read).
