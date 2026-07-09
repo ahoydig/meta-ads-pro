@@ -13,9 +13,13 @@
 #   META_ACCESS_TOKEN, META_API_VERSION — todos os checks (via graph_api.sh)
 #   AD_ACCOUNT_ID                       — checks 5/6/8
 #   PAGE_ID                             — checks 7/13
-#   PIXEL_ID                            — check 14 (novo). Quando vem do .env
-#                                          (setup Passo 8), o runner deve
-#                                          exportá-lo com o mesmo padrão acima.
+#   PIXEL_ID                            — check 14 (novo). Chega por 2 caminhos:
+#                                          direto do .env (setup Passo 8 grava
+#                                          PIXEL_ID=<id> ao descobrir/criar o
+#                                          pixel) OU pela ponte CLAUDE.md→env
+#                                          da orquestradora (Passo 2), que
+#                                          cobre projetos antigos onde o id
+#                                          existe só como pixel_id: no CLAUDE.md.
 #   GHL_PIT_TOKEN, GHL_LOCATION_ID       — check 11 (novo, opcional — GHL/FluxiHub)
 #   RECEIVER_HEALTH_URL                  — check 12 (novo, opcional — receiver de leadgen)
 # Nenhuma dessas 4 novas vars é obrigatória — ausência = check retorna ⚠ (1),
@@ -276,7 +280,7 @@ check_capi_dataset() {
   [[ -z "${PIXEL_ID:-}" ]] && { echo "⚠ Sem PIXEL_ID — CAPI do funil inativa"; return 1; }
   local r last
   r=$(graph_api GET "${PIXEL_ID}?fields=name,last_fired_time" 2>/dev/null || true)
-  last=$(echo "$r" | jq -r '.last_fired_time // empty')
+  last=$(echo "$r" | jq -r '.last_fired_time // empty') || last=""
   if [[ -n "$last" ]]; then
     echo "✓ CAPI/pixel: último evento em $last"
   else

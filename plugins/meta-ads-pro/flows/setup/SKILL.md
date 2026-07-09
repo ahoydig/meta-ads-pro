@@ -157,6 +157,30 @@ Se múltiplos resultados por categoria → pergunta qual é principal.
   mostra o `code` de instalação (`GET {pixel_id}?fields=code`) pro usuário
   colar no site.
 
+**Em ambos os casos com pixel (descoberto no `adspixels` OU criado agora):**
+além do CLAUDE.md (Passo 11), gravar o id escolhido no `.env` — é daí que o
+doctor lê `PIXEL_ID` pro check 14 (`check_capi_dataset`). Mesmo padrão
+.gitignore-first do Passo 5, idempotente pra re-run do setup:
+
+```bash
+# 1. .gitignore antes de qualquer write (idempotente — já deve estar lá do Passo 5)
+touch .gitignore
+grep -qxF '.env' .gitignore || echo '.env' >> .gitignore
+
+# 2. Grava/atualiza PIXEL_ID no .env
+if grep -q '^PIXEL_ID=' .env 2>/dev/null; then
+  sed -i.bak "s|^PIXEL_ID=.*|PIXEL_ID=${pixel_id}|" .env && rm -f .env.bak
+else
+  echo "PIXEL_ID=${pixel_id}" >> .env
+fi
+
+# 3. Carrega na sessão
+export PIXEL_ID=$(grep '^PIXEL_ID=' .env | cut -d'=' -f2-)
+```
+
+Se a conta seguiu **sem** pixel (usuário respondeu `N`), nada é gravado no
+`.env` — o check 14 vai avisar ⚠ (não bloqueia) até um pixel existir.
+
 ### Passo 8.5 — Integração opcional com GHL/FluxiHub
 
 Pergunta obrigatória de degrau (S/n) — mesmo padrão do Passo 10:
