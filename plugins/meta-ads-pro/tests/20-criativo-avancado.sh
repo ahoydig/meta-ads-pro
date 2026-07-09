@@ -180,8 +180,16 @@ test_02_image_crops() {
   r=$(graph_api POST "${AD_ACCOUNT_ID}/adcreatives" "$payload") \
     || _fail "test_02_image_crops" "POST falhou: $r"
   cid=$(echo "$r" | jq -r .id); created_creatives+=("$cid")
-  graph_api GET "${cid}?fields=image_crops" | jq -e '.image_crops["100x100"]' >/dev/null \
-    || _fail "test_02_image_crops" "image_crops não persistiu"
+  # Round-trip: 1 GET só, verificando (a) o lugar CERTO diretamente (campo
+  # aninhado em object_story_spec.link_data) com igualdade EXATA do valor
+  # enviado — não só presença — e (b) o espelho top-level read-only.
+  local got
+  got=$(graph_api GET "${cid}?fields=object_story_spec,image_crops") \
+    || _fail "test_02_image_crops" "GET round-trip falhou: $got"
+  echo "$got" | jq -e '.object_story_spec.link_data.image_crops["100x100"] == [[0,420],[1080,1500]]' >/dev/null \
+    || _fail "test_02_image_crops" "image_crops aninhado ausente ou != enviado: $got"
+  echo "$got" | jq -e '.image_crops["100x100"] == [[0,420],[1080,1500]]' >/dev/null \
+    || _fail "test_02_image_crops" "espelho top-level image_crops ausente ou != enviado: $got"
   _pass "test_02_image_crops (cid=$cid)"
 }
 
