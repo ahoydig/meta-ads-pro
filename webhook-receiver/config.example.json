@@ -1,0 +1,10 @@
+{
+  "PAGE_ID_DO_CLIENTE_X": {
+    "location_id": "GHL_LOCATION_ID_DO_CLIENTE_X",
+    "ghl_token_env": "GHL_TOKEN_CLIENTE_X",
+    "custom_fields": {
+      "utm_campaign": "CUSTOM_FIELD_ID_UTM_CAMPAIGN_NO_GHL",
+      "utm_source": "CUSTOM_FIELD_ID_UTM_SOURCE_NO_GHL"
+    }
+  }
+}

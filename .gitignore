@@ -8,3 +8,8 @@ node_modules/
 
 __pycache__/
 *.pyc
+
+# webhook-receiver (Task 9)
+webhook-receiver/.venv/
+webhook-receiver/.env
+webhook-receiver/.pytest_cache/
