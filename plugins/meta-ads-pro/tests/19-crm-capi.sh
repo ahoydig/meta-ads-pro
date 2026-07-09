@@ -20,8 +20,21 @@
 #                                nesta conta ao vivo — precisa do token da própria Página).
 #                                NUNCA ecoa o token derivado.
 #
-# capi-setup/capi-testar (Task 12) NÃO têm teste aqui ainda — stub "ver T12" no SKILL.md,
-# a Task 12 adiciona os testes 04-05 neste mesmo arquivo.
+# test_04_capi_test_event    — POST {PIXEL_ID}/events com test_event_code (Task 12). Envia
+#                                um evento LeadQualificado sintético (em/ph hasheados SHA-256,
+#                                action_source=system_generated — evento de CRM, não de site)
+#                                e confere .events_received == 1. LIVE HOJE (META_ACCESS_TOKEN +
+#                                PIXEL_ID já no .env; CAPI_TEST_EVENT_CODE obtido ao vivo no
+#                                Events Manager, pixel 947064561562400 — "pixel - @flavioahoy",
+#                                aba Eventos de teste → canal Site → "Confirme se os eventos do
+#                                seu servidor estão configurados corretamente"). Skip sem
+#                                CAPI_TEST_EVENT_CODE (código expira — não é secret fixo, mas
+#                                fica fora do git via .env gitignored). test_event_code isola o
+#                                evento do teste da otimização real — TEST_ prefix (usado nos
+#                                outros testes deste plugin pra nome de recurso) não se aplica
+#                                aqui.
+#
+# test_05 fica livre pra uma task futura (ex.: doctor check_capi_dataset, Task 21).
 #
 # Bash 3.2 portable. Nunca ecoa GHL_PIT_TOKEN nem META_ACCESS_TOKEN.
 
@@ -117,9 +130,34 @@ test_03_subscribed_apps_leadgen() {
   fi
 }
 
+# ─── test_04: envio de test event CAPI (live, não polui otimização) ────────
+test_04_capi_test_event() {
+  local name="test_04_capi_test_event"
+  if [[ -z "${META_ACCESS_TOKEN:-}" || -z "${PIXEL_ID:-}" || -z "${CAPI_TEST_EVENT_CODE:-}" ]]; then
+    _skip "$name" "sem PIXEL_ID/CAPI_TEST_EVENT_CODE — gere um em business.facebook.com/events_manager2, pixel do .env, aba Eventos de teste"
+    return 0
+  fi
+
+  local em ph payload response
+  em=$(echo -n "teste@ahoy.digital" | shasum -a 256 | awk '{print $1}')
+  ph=$(echo -n "+5591999999999" | shasum -a 256 | awk '{print $1}')
+  payload=$(jq -nc --arg em "$em" --arg ph "$ph" --arg tec "$CAPI_TEST_EVENT_CODE" \
+    --argjson now "$(date +%s)" '{
+    data: [{event_name:"LeadQualificado", event_time:$now, action_source:"system_generated",
+            user_data:{em:[$em], ph:[$ph]},
+            custom_data:{lead_event_source:"GHL", event_source:"crm"}}],
+    test_event_code: $tec}')
+  response=$(graph_api POST "${PIXEL_ID}/events" "$payload") \
+    || _fail "$name" "POST falhou: $response"
+  [[ "$(echo "$response" | jq -r '.events_received // 0')" == "1" ]] \
+    || _fail "$name" "events_received != 1: $response"
+  _pass "$name"
+}
+
 test_01_ghl_location
 test_02_receiver_health
 test_03_subscribed_apps_leadgen
+test_04_capi_test_event
 
 echo ""
 echo "19-crm-capi: $PASS passou, $FAIL falhou, $SKIP skip"

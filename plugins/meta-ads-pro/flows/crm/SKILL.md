@@ -351,16 +351,148 @@ fi
 Rodar isso num `trap ... EXIT` (mesmo padrão de `tests/08-lead-forms.sh`), pra arquivar
 mesmo se o teste abortar no meio.
 
-## Modo `capi-setup` — ver T12
+## Modo `capi-setup`
 
-Stub. A Task 12 preenche setup do dataset de Conversions API do funil (associação
-dataset↔pixel, configuração da ação nativa do GHL que dispara CAPI). Nenhum conteúdo aqui
-até lá — não inventar payload/endpoint antes da Task 12 verificar.
+Setup do dataset de Conversions API (CAPI) do funil: o **pixel É o dataset** (Meta unificou
+os dois conceitos — não existe "dataset" separado do pixel pra CAPI de site/CRM). A fonte
+dos eventos é o **WORKFLOW do GHL**, não este plugin — mesma limitação de API do modo
+`mapear` acima (não existe endpoint pra configurar ação de workflow programaticamente).
 
-## Modo `capi-testar` — ver T12
+### Passo 1 — Confirmar o pixel (dataset)
 
-Stub. A Task 12 preenche disparo de test event + verificação no Test Events do Events
-Manager (`CAPI_TEST_EVENT_CODE`). Nenhum conteúdo aqui até lá.
+Confirma `PIXEL_ID` no `.env`/`CLAUDE.md` do projeto. Sem pixel → oferecer criação
+(`flows/publicos`, seção pixel — Task 19) ou apontar pro Events Manager
+(`business.facebook.com/events_manager2`) pra localizar/criar um.
+
+### Passo 2 — Checklist guiado da ação nativa no GHL
+
+```
+1. Abra a subconta → Automation → Workflows
+2. Um workflow por marco do funil (4 no total): qualificou / agendou / compareceu / fechou
+3. Em cada workflow, adicione a ação "Facebook Conversions API"
+   (nome exato do botão pode variar por versão do GHL — procure "Conversions API" ou "CAPI"
+   na lista de ações)
+4. Configure a ação: Pixel = mesmo PIXEL_ID do .env; Evento = nome custom (convenção abaixo)
+5. Convenção de nomes — usar EXATAMENTE (mesmo case), pra bater com o que a campanha
+   Meta vai otimizar:
+     LeadQualificado    — marco 1: lead qualificado (SDR ou critério automático)
+     AgendamentoMarcado — marco 2: reunião/demo agendada
+     Compareceu         — marco 3: compareceu à reunião
+     Fechou             — marco 4: fechou negócio
+6. Publique o workflow — workflow em rascunho não dispara CAPI nenhuma.
+```
+
+`[não verificado ao vivo — validar na T23]` — telas exatas da ação "Facebook Conversions
+API" na UI do GHL (rótulo do botão, campos obrigatórios) não foram exercitadas nesta task
+(sem Private Integration da subconta de teste ainda — mesma pendência do resto deste flow).
+O roteiro acima segue a documentação pública do GHL para a integração nativa; não tratar
+como contrato fechado até a Task 23 confirmar com a subconta real.
+
+### Passo 3 — Pegar o `test_event_code`
+
+```
+1. business.facebook.com/events_manager2 (redireciona pra eventsmanager.facebook.com,
+   mesma conta) → Conjuntos de dados → selecione o pixel do PIXEL_ID
+2. Aba "Eventos de teste" → dropdown "Selecione um canal de marketing" → Site
+   (não existe opção "CRM"/"Servidor" dedicada — o código é do DATASET, não do canal;
+   qualquer opção do dropdown expõe o mesmo test_event_code)
+3. Expanda "Confirme se os eventos do seu servidor estão configurados corretamente"
+   → copie o test_event_code: TESTxxxxx
+4. Salve no .env do projeto: CAPI_TEST_EVENT_CODE=TESTxxxxx
+   (não é secret persistente — expira; ok aparecer em log de execução, mas o .env
+   em si já é gitignored por padrão neste plugin)
+```
+
+`[fonte: verificado ao vivo nesta task, 2026-07]` pixel `947064561562400`
+("pixel - @flavioahoy"): código obtido `TEST38283`. O dropdown de canal só oferece **Site**
+e **Offline** nesta conta — sem opção "CRM" separada, apesar do texto da própria página
+mencionar "eventos do site, app, CRM e servidor".
+
+## Modo `capi-testar`
+
+### Passo 1 — Enviar o test event
+
+```bash
+source "$CLAUDE_PLUGIN_ROOT/lib/graph_api.sh"
+em=$(echo -n "teste@ahoy.digital" | shasum -a 256 | awk '{print $1}')
+ph=$(echo -n "+5591999999999" | shasum -a 256 | awk '{print $1}')
+payload=$(jq -nc --arg em "$em" --arg ph "$ph" --arg tec "$CAPI_TEST_EVENT_CODE" \
+  --argjson now "$(date +%s)" '{
+  data: [{event_name:"LeadQualificado", event_time:$now, action_source:"system_generated",
+          user_data:{em:[$em], ph:[$ph]},
+          custom_data:{lead_event_source:"GHL", event_source:"crm"}}],
+  test_event_code: $tec}')
+response=$(graph_api POST "${PIXEL_ID}/events" "$payload")
+echo "$response" | jq -r '.events_received // 0'   # esperado: 1
+```
+
+`action_source: system_generated` — evento do CRM (GHL), não de navegador/site.
+`em`/`ph` sempre em SHA-256 (Conversions API nunca aceita PII em claro). Este é
+exatamente o payload de `tests/19-crm-capi.sh::test_04_capi_test_event` — os dois devem
+ficar em sincronia; qualquer mudança no formato do evento vai nos dois lugares.
+
+Sucesso = `.events_received == 1` na resposta — esta é a validação **live e confiável**.
+`[fonte: verificado ao vivo nesta task, 2026-07]` rodado 2× contra o pixel
+`947064561562400` com `CAPI_TEST_EVENT_CODE=TEST38283`: `events_received: 1` nas duas
+vezes.
+
+### Passo 2 — Verificação visual (achado: a lista clássica de Test Events sumiu)
+
+`[fonte: verificado ao vivo nesta task, 2026-07]` — **a tabela "eventos recebidos" do Test
+Events que a documentação clássica do Meta descreve NÃO existe mais** na interface atual
+do Events Manager (`business.facebook.com/events_manager2` redireciona pra
+`eventsmanager.facebook.com`). Testado exaustivamente nesta sessão, com o evento
+`LeadQualificado` disparado 2× contra o pixel real:
+
+- Aba **Eventos de teste** (canal Site) → mostra só o `test_event_code` + botão
+  "Explorador da Graph API" (que abre um formulário de **envio** pré-preenchido no Graph
+  API Explorer — não um viewer de eventos já recebidos). Nenhuma tabela aparece abaixo,
+  mesmo recarregando a página depois do POST.
+- Aba **Diagnóstico** → não relacionada (mostra alerta de domínio não confirmado,
+  pré-existente, nada a ver com o test event).
+- Aba **Histórico** → log de mudanças de CONFIGURAÇÃO do dataset (token gerado,
+  compartilhamento de acesso), não de eventos individuais.
+- Aba **Visão geral** → tabela agregada de eventos de PRODUÇÃO (`Ver conteúdo`, etc., com
+  coluna "Qualidade da correspondência" = EMQ). Busquei explicitamente por
+  "LeadQualificado" no filtro de eventos → **"Nenhum evento chamado 'LeadQualificado'
+  encontrado"**. Isso é **esperado, não um bug**: eventos com `test_event_code` são
+  isolados da otimização/relatórios de produção por design (mesmo princípio do prefixo
+  `TEST_` usado nos outros modos deste plugin pra recursos).
+
+**Conclusão prática:** a evidência de que o evento chegou é o **`events_received: 1` da
+própria resposta da API** (Passo 1) — não uma lista visual com nome de evento e horário.
+Se quiser uma segunda conferência visual, a única tela útil hoje é reabrir "Eventos de
+teste" e checar que o `test_event_code` exibido bate com o usado no payload (confirma que
+está mirando o pixel certo) — não esperar ver `LeadQualificado` numa lista em nenhuma aba.
+
+Se uma versão futura do Events Manager reintroduzir essa lista (ou outra conta/pixel
+mostrar comportamento diferente), atualizar esta seção — não assumir que o que foi
+observado aqui (pixel `947064561562400`, 2026-07) generaliza pra sempre.
+
+### Passo 3 — Match quality (EMQ)
+
+A API não expõe EMQ por evento individual. Leitura manual: Events Manager → pixel → aba
+"Visão geral" → tabela de eventos → coluna "Qualidade da correspondência" (ex.: `6.1/10`
+observado ao vivo pro evento `Ver conteúdo` desta conta — evento de produção não
+relacionado ao teste). Essa coluna é agregada por NOME DE EVENTO de produção — o EMQ de
+`LeadQualificado` só vai aparecer ali depois que os workflows reais do GHL (Passo 2 do
+`capi-setup`) rodarem em produção (sem `test_event_code`) e acumularem volume. Não há
+atalho pra ver EMQ de um test event isolado.
+
+### Passo 4 — Checklist final de go-live
+
+```
+[ ] Workflows GHL publicados (não em rascunho) pros 4 marcos do funil?
+[ ] Cada workflow aponta pro MESMO pixel (PIXEL_ID do .env)?
+[ ] Nomes de evento batem EXATAMENTE com a convenção (LeadQualificado / AgendamentoMarcado
+    / Compareceu / Fechou)?
+[ ] Depois do go-live, eventos chegando SEM test_event_code? (com o código, contam só
+    como teste — não otimizam a campanha)
+[ ] Ad set/campanha configurado pra otimizar pro evento custom (conversion_leads)?
+[ ] CAPI_TEST_EVENT_CODE tratado como pontual — só setar quando for testar de novo
+    (gerar um código novo no Events Manager se o antigo expirar; não deixar fixo achando
+    que é permanente)?
+```
 
 ## Regras invioláveis
 
@@ -377,6 +509,11 @@ Manager (`CAPI_TEST_EVENT_CODE`). Nenhum conteúdo aqui até lá.
 5. **Payload de resposta do GHL não exercitado ao vivo** fica rotulado
    `[não verificado ao vivo — validar na T23]` — não tratar como contrato fechado até lá.
 6. **`GHL_PIT_TOKEN` nunca vai pro `CLAUDE.md`** — só `.env`.
+7. **`test_event_code` é só pra teste pontual** — todo POST de `capi-testar` leva
+   `test_event_code`; eventos reais do workflow do GHL (`capi-setup`) **nunca** devem
+   carregar esse campo (senão contam só como teste e não otimizam a campanha).
+   `CAPI_TEST_EVENT_CODE` não é secret persistente (expira), mas fica em `.env`
+   gitignored mesmo assim — não hardcodear no SKILL.md/CLAUDE.md como se fosse fixo.
 
 ## Ganchos com outras skills
 
@@ -384,7 +521,8 @@ Manager (`CAPI_TEST_EVENT_CODE`). Nenhum conteúdo aqui até lá.
   e o receiver consomem; `testar` usa o mesmo payload mínimo validado lá.
 - **`flows/doctor/`** — pre-flight de token/scopes/rate-limit antes de rodar `status`; a
   Task 21 formaliza `check_ghl`/`check_receiver`/`check_leadgen_subscription` em
-  `lib/preflight.sh`, reusando os corpos deste doc.
+  `lib/preflight.sh`, reusando os corpos deste doc. Também pluga `check_capi_dataset`
+  (Task 21) — reusar o Passo 1 do `capi-testar` acima (POST + `events_received == 1`).
 - **`flows/setup/`** — Passo 8.5 coleta `GHL_LOCATION_ID`/`GHL_PIT_TOKEN`/
   `RECEIVER_HEALTH_URL` (spec completa no plano v1.1, Task 21 Step 2).
 - **`webhook-receiver/`** — `config.json` (Passo 3 do modo `mapear`) e `/meta-leads/health`
