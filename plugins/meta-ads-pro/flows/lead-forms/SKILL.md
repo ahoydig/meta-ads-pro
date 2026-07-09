@@ -1,6 +1,6 @@
 ---
 name: meta-ads-lead-forms
-description: CRUD de Meta Instant Forms (lead forms nativos). Valida política de privacidade bilíngue PT+EN em 3 camadas, força thank you qualificado+desqualificado, suporta qualifier/disqualifier + conditional logic, export de leads pra CSV. Fix dos bugs #7 (privacy Instagram) e #8 (thank you dupla).
+description: CRUD de Meta Instant Forms (lead forms nativos). Valida política de privacidade bilíngue PT+EN em 3 camadas, força thank you qualificado+desqualificado, suporta qualifier/disqualifier + guard-rails de condicionais (dropdowns encadeados/branching — ver estado real no Passo 5), export de leads pra CSV. Fix dos bugs #7 (privacy Instagram) e #8 (thank you dupla).
 ---
 
 # meta-ads-lead-forms
@@ -94,7 +94,6 @@ Pra cada pergunta:
 Tipo:
 [s] short_answer — resposta livre
 [m] multiple_choice — opções (2-10)
-[c] conditional — mostra só se outra pergunta = X
 
 Label (max 200 chars): ____
 
@@ -109,13 +108,47 @@ Qualifier?
 [n] Neutra (sem filtro)
 ```
 
-Conditional logic (se tipo=c):
-```
-Mostre essa pergunta SE:
-Pergunta ____ (label ou key) = ____
-```
-
 **Segurança:** labels e option values vêm do usuário. Passar sempre via `jq --arg` ou stdin pro Python — nunca via heredoc (FU-1).
+
+**Condicionais — estado real (spike 2026-07):** ver `docs/spikes/2026-07-leadform-avancado.md`,
+seções 3-4, pra evidência completa. Resumo executivo:
+
+- **Qualificar/desqualificar por resposta: SUPORTADO.** Não existe (nem precisa de) um campo
+  nativo "esta opção qualifica/desqualifica" — o mecanismo real da Meta é o form inteiro ter só
+  duas saídas possíveis, `thank_you_page` (lead qualificado) ou `disqualified_thank_you_page`
+  (lead desqualificado). Marque a pergunta como `[q]`/`[d]` no fluxo acima só pra guiar QUAL thank
+  you mostrar (decisão client-side, fora do payload); a implementação real são os Passos 7-8
+  (thank you dupla, já obrigatória desde o fix do bug #8). Regressão: `test_10_qualifier_disqualifier`
+  (`tests/08-lead-forms.sh`) — form com pergunta qualificadora MULTIPLE_CHOICE + thank you dupla,
+  round-trip via GET confirma key/label/options intactos.
+
+- **Dropdowns encadeados (pergunta B só aparece se A = X): PARCIAL.** Os campos
+  `dependent_conditional_questions` (array) e `conditional_questions_group_id` (numeric string)
+  são reais e validados pela API por schema/enum — não são "chave desconhecida". Mas o mecanismo
+  completo exige um **"LeadGen Conditional Questions Group"** pré-existente, e o endpoint de
+  criação desse recurso não está documentado publicamente (nem na referência oficial da Graph
+  API, nem no guia de lead ads — 4 tentativas ao vivo no spike, cada uma revelando um requisito
+  novo: enum de 15 `input_type` válidos pro aninhado, proibição de `input_type` na pergunta pai,
+  um `conditional_questions_choices_id` obrigatório sem posição correta encontrada, e por fim um
+  `conditional_questions_group_id` que precisa apontar pra um grupo real — erro final:
+  `"(#100) Param questions[N][conditional_questions_group_id] is not a valid LeadGen Conditional
+  Questions Group ID"`). **Não implementar via payload JSON direto** — o artigo de ajuda da Meta
+  sugere que esse grupo é criado pela UI do Ads Manager/Forms Library. **Pista futura:** criar um
+  form com respostas condicionais na UI e inspecionar via `GET {form_id}?fields=questions` pra
+  descobrir o formato real do `conditional_questions_group_id` e replicar.
+
+- **Branching (mostrar/ocultar pergunta) fora da família acima: NÃO EXISTE.** Teste dedicado ao
+  vivo com 3 candidatos (`visibility_condition`, `show_if`, `skip_logic`) numa mesma pergunta
+  CUSTOM foi rejeitado com `"(#100) Invalid keys \"visibility_condition, show_if, skip_logic\"
+  were found in param \"questions[N]\""` — erro de chave desconhecida (não de schema), e zero
+  form foi criado. Segunda perna: o guia oficial completo de lead ads não menciona show/hide,
+  skip logic ou visibilidade condicional em nenhum lugar. **Plano B (já validado ao vivo):**
+  qualificação por dropdown + `disqualified_thank_you_page` — mesma implementação do item acima.
+  Isso não esconde/mostra perguntas subsequentes (é tudo perguntas fixas + 1 desfecho binário no
+  final), mas é suficiente pra qualificação simples; insuficiente pra múltiplos ramos de pergunta.
+  Guard-rail permanente: `test_11_conditional_logic` (`tests/08-lead-forms.sh`) reproduz a
+  Tentativa 4 do spike (`conditional_questions_group_id` fake) e falha explicitamente se a API um
+  dia aceitar — nesse caso, atualizar este documento e o spike antes de construir em cima disso.
 
 Payload exemplo:
 ```json
@@ -126,7 +159,6 @@ Payload exemplo:
       "type": "CUSTOM",
       "key": "procedure_interest",
       "label": "Qual procedimento?",
-      "input_type": "MULTIPLE_CHOICE",
       "options": [
         {"value": "Extração", "key": "ext"},
         {"value": "Gengivoplastia", "key": "geng"}
@@ -135,6 +167,12 @@ Payload exemplo:
   ]
 }
 ```
+
+**Nota:** sem `input_type` de propósito — achado ao vivo (`test_08`/`test_09` em `tests/08-lead-forms.sh`):
+qualquer `input_type` é chave inválida numa pergunta CUSTOM de topo nesta versão da API
+(`(#100) Invalid keys "input_type" were found in param "questions[N]"`). A presença de `options[]`
+já basta pra virar multiple_choice; sem `options[]`, vira short_answer por padrão. Cada `option`
+precisa de `key` (sem ele, a API retorna erro 500 genérico).
 
 ### Passo 6 — Privacy policy URL (3 camadas bilíngue — FIX BUG #7)
 
