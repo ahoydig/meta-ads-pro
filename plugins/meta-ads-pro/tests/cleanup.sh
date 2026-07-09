@@ -106,10 +106,34 @@ list_prefixed() {
 # só se PAGE_ID setado. Forms já ARCHIVED ficam de fora (nada a fazer com
 # eles; "evidência final" documentada no report é justamente forms ARCHIVED
 # sobrando, não ACTIVE).
+#
+# PAGE TOKEN obrigatório TAMBÉM na listagem (não só no ARCHIVED): com o
+# token de system user, GET {page}/leadgen_forms devolve 190 "This method
+# must be called with a Page Access Token" (reproduzido ao vivo no T22) —
+# e o guard de erro silenciava pra "[]", fazendo a varredura de forms
+# parecer limpa mesmo se houvesse forms ACTIVE. Deriva o page token uma
+# vez e reusa no archive_forms (PAGE_TOKEN_CACHED). Nunca ecoar o token.
+PAGE_TOKEN_CACHED=""
+_derive_page_token() {
+  [[ -n "$PAGE_TOKEN_CACHED" ]] && return 0
+  [[ -n "$PAGE_ID" ]] || return 1
+  # `|| PAGE_TOKEN_CACHED=""` — guard padrão contra pipefail em stdout não-JSON
+  PAGE_TOKEN_CACHED=$(GRAPH_API_SKIP_RESOLVER=1 graph_api GET "${PAGE_ID}?fields=access_token" 2>/dev/null \
+    | jq -r '.access_token // empty') || PAGE_TOKEN_CACHED=""
+  [[ -n "$PAGE_TOKEN_CACHED" ]]
+}
+
 list_forms_prefixed() {
   [[ -n "$PAGE_ID" ]] || { echo "[]"; return 0; }
+  if ! _derive_page_token; then
+    echo "⚠ sem page token — varredura de leadgen_forms pulada (não confie no zero)" >&2
+    echo "[]"
+    return 0
+  fi
   local resp total
-  if ! resp=$(graph_api GET "${PAGE_ID}/leadgen_forms?fields=id,name,status&limit=${LIST_LIMIT}" 2>/dev/null); then
+  resp=$(curl -sS "https://graph.facebook.com/${META_API_VERSION:-v25.0}/${PAGE_ID}/leadgen_forms?fields=id,name,status&limit=${LIST_LIMIT}&access_token=${PAGE_TOKEN_CACHED}" 2>/dev/null) || { echo "[]"; return 0; }
+  if ! echo "$resp" | jq -e '.data' >/dev/null 2>&1; then
+    echo "⚠ listagem de leadgen_forms falhou — varredura de forms pulada (não confie no zero)" >&2
     echo "[]"
     return 0
   fi
@@ -248,13 +272,11 @@ archive_forms() {
   echo ""
   echo "→ Arquivando $n leadgen_form(s)..."
 
+  # Reusa o page token derivado na listagem (_derive_page_token); se por
+  # algum motivo ainda não existe (ex.: chamada avulsa), deriva agora.
   local page_token
-  # `|| page_token=""` — mesmo guard de tests/08-lead-forms.sh: sob
-  # `set -o pipefail` (herdado do graph_api.sh, mesmo com set +e no resto
-  # deste script), um stdout não-JSON quebraria o jq; degrada pro check de
-  # vazio abaixo em vez de propagar erro.
-  page_token=$(GRAPH_API_SKIP_RESOLVER=1 graph_api GET "${PAGE_ID}?fields=access_token" 2>/dev/null \
-    | jq -r '.access_token // empty') || page_token=""
+  _derive_page_token || true
+  page_token="$PAGE_TOKEN_CACHED"
   if [[ -z "$page_token" ]]; then
     echo "  ⚠ sem page token — forms de teste ficam ACTIVE (arquive manualmente)" >&2
     local skip_id skip_name
