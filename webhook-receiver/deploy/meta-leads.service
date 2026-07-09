@@ -1,0 +1,13 @@
+[Unit]
+Description=Meta leadgen webhook receiver
+After=network.target
+
+[Service]
+User=metaleads
+WorkingDirectory=/opt/meta-leads
+EnvironmentFile=/opt/meta-leads/.env
+ExecStart=/opt/meta-leads/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8811
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

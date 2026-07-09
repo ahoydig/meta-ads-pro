@@ -250,6 +250,43 @@ executar, na ordem:
    (Verificação da empresa já feita; falta Verificação de acesso + Análise do app) —
    não bloqueia o piloto atual.
 
+## Atualização — execução real da Task 10 (2026-07-09)
+
+Runbook completo em `webhook-receiver/deploy/RUNBOOK.md`. Resumo do que mudou em
+relação ao checklist acima:
+
+- [x] Item 1-2 (subir o receiver + implementar GET/POST) — **DONE**. Serviço
+  `meta-leads.service` rodando em `127.0.0.1:8811` na VPS (`root@5.78.224.81`),
+  `GET /meta-leads/health` e o handshake `hub.challenge` testados e OK localmente.
+- [ ] Item 1 (expor via `webhooks.ahoy.digital/meta-leads`) — **BLOCKED**. Achado
+  importante: o tunnel `ahoy-hermes` é **remotamente gerenciado** (`cloudflared tunnel
+  run --token ...`), não tem `/etc/cloudflared/config.yml` local — as rotas
+  (`hermes.ahoy.digital`, `webhooks.ahoy.digital`→`:8644`, `preview.ahoy.digital`)
+  vivem na config remota do painel Cloudflare Zero Trust. Adicionar a rota
+  `/meta-leads*`→`:8811` exige login no painel (Cloudflare One → Networks → Tunnels →
+  `ahoy-hermes` → Public Hostname) — o token de API já presente na VPS
+  (`/root/.hermes/secrets/cloudflare-api-token`) não tem escopo de `Cloudflare Tunnel:
+  Edit` (`403`/`code 1001` testado ao vivo). Confirmado externamente: `curl
+  https://webhooks.ahoy.digital/meta-leads/health` → `404` (cai no catch-all do
+  webhook nativo do Hermes). Detalhe completo + instrução exata pro humano no
+  RUNBOOK.md §8.
+- [x] Item 3 (App Secret) — **tentado, BLOCKED**. Painel pediu reautenticação por
+  senha ao clicar "Mostrar" em Configurações do app → Básico — modal cancelado sem
+  submeter (regra: agente não digita/confirma senha). `.env` da VPS ficou com
+  `META_APP_SECRET=PENDENTE_HUMANO`.
+- [x] Item 5 (Verify and Save no painel) — **não tentado de propósito**: sem a rota
+  pública (item acima), a Meta chamaria o `GET` e bateria no `404` do webhook do
+  Hermes — não faz sentido tentar salvar antes do §8 do runbook ser resolvido.
+  Documentado na mesma visita: a tela "Configurar um webhook" tem um toggle **"Anexe
+  um certificado de cliente às solicitações de webhook"** — é a opção de **mTLS** do
+  changelog v25, existe na UI, desligada por padrão, não ativada (fora de escopo desta
+  task).
+- [x] Item 6 (reconfirmar subscrição da Página em `leadgen`) — **reconfirmado ao
+  vivo**, 3ª vez: `GET /108356564252733/subscribed_apps?fields=subscribed_fields` (com
+  page token) → `{"data":[{"id":"995722365981851","subscribed_fields":["leadgen"]}]}`.
+- [ ] Item 7 (teste e2e com lead de teste) — **pulado**, depende dos dois blockers
+  acima (rota pública + App Secret).
+
 ## Fontes consultadas (2026-07-09, via WebFetch)
 
 - https://developers.facebook.com/docs/graph-api/webhooks/getting-started — verificação
