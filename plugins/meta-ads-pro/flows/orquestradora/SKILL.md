@@ -106,6 +106,8 @@ Tabela de roteamento:
 | "configurar", "setup", "trocar conta" | `setup/` |
 | "importar", "importar dados existentes" | `import-existing/` |
 | "rollback", "deletar run X" | `rollback` |
+| "crm/ghl/fluxihub/mapear lead/capi" | `crm/` |
+| "novidades da api/changelog/mudou algo na meta" | `news/` |
 
 **Em ambiguidade:** pergunta ao usuário antes de delegar.
 
@@ -176,6 +178,8 @@ Se [1] ou [2], chama `/meta-ads-doctor --review-learnings`.
 | Rollback | `/meta-ads-rollback {run_id}` | Rollback manual |
 | Update | `/meta-ads-update` | git pull + ./install.sh |
 | Telemetry | `/meta-ads-analyze-telemetry` | Agrega eventos locais |
+| CRM | `/meta-ads-crm` | Integração GHL/FluxiHub — status/mapear/testar/CAPI do funil |
+| News | `/meta-ads-news` | Changelog da Marketing/Graph API vs versão em uso |
 
 ## Erros comuns — referência global
 

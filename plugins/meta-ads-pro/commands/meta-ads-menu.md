@@ -55,7 +55,7 @@ Em seguida, imprima o menu principal BYTE-EXATO abaixo:
 ║     /meta-ads-doctor ....... Pre-flight (14 checks + --fix)      ║
 ║                                                                  ║
 ║  🚀 CRIAR                                                        ║
-║     /meta-ads-campanha ..... Nova campanha (5 objetivos)         ║
+║     /meta-ads-campanha ..... Nova campanha (6 objetivos)         ║
 ║     /meta-ads-conjuntos .... Ad sets (targeting, budget, data)   ║
 ║     /meta-ads-anuncios ..... Anúncios (normal/dinâmico/carrossel)║
 ║     /meta-ads-lead-forms ... Lead form (qualifier/disqualifier)  ║

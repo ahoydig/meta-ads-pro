@@ -81,8 +81,9 @@ TRUNCATED_WARN=()
 # ── coleta ───────────────────────────────────────────────────────────────────
 echo "→ Buscando objetos TEST_* em $ACCOUNT..."
 
-# Filtering no servidor via `filtering` param: name CONTAIN "TEST_"
-# Graph API não tem STARTS_WITH, então filtramos client-side depois.
+# Sem filtro server-side aqui: a Graph API não suporta STARTS_WITH pra `name`
+# (só CONTAINS/EQUAL), então buscamos a lista inteira e filtramos client-side
+# via jq (startswith("TEST_"), dentro de list_prefixed abaixo).
 # args: endpoint [fields] — fields default "id,name,status" (adcreatives e
 # customaudiences não têm um campo `status` comparável, então passam "id,name").
 list_prefixed() {

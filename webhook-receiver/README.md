@@ -59,7 +59,7 @@ configurado no form, o valor é o ID do custom field correspondente no GHL. Ver
 |---|---|---|
 | `/meta-leads` | `GET` | Verificação do webhook (handshake `hub.mode`/`hub.verify_token`/`hub.challenge` da Meta). |
 | `/meta-leads` | `POST` | Recebe os eventos de leadgen, valida assinatura, busca o lead, empurra pro GHL. `500` em falha transiente (ver semântica de retry acima). |
-| `/meta-leads/health` | `GET` | Health check — `{"received_total": N, "pushed": N, "errors": N, "no_config": N, "malformed": N, "last_event_at": ..., "last_status": ...}`, tudo derivado do `events.jsonl`. Consumido pelo `doctor` (Task 21). |
+| `/meta-leads/health` | `GET` | Health check — `{"received_total": N, "pushed": N, "errors": N, "no_config": N, "malformed": N, "malformed_log_lines": N, "last_event_at": ..., "last_status": ...}`, tudo derivado do `events.jsonl` (linhas corrompidas do próprio log não derrubam o endpoint — contam em `malformed_log_lines` e são puladas). Consumido pelo `doctor` (Task 21). |
 
 ## Variáveis de ambiente
 
@@ -89,13 +89,17 @@ ads daquele cliente. O valor tem:
   UTMs propagados via `tracking_parameters` (ver seção acima). Preenchido de fato na
   Task 11 Step 3, quando os custom fields existirem no GHL de cada cliente.
 
+`config.json` é lido no boot (`CONFIG` é carregado uma vez, no import do módulo) —
+depois de editar o arquivo em produção, é preciso `systemctl restart meta-leads.service`
+pra aplicar (ver `deploy/RUNBOOK.md`).
+
 ## Rodando local (dev/test)
 
 ```bash
 cd webhook-receiver
 python3 -m venv .venv
 .venv/bin/pip install fastapi uvicorn httpx pytest
-.venv/bin/pytest -q          # 9 testes, tudo com monkeypatch (sem chamada real à Meta/GHL)
+.venv/bin/pytest -q          # 10 testes, tudo com monkeypatch (sem chamada real à Meta/GHL)
 ```
 
 Pra subir localmente com env fake (smoke test, sem integração real):
@@ -118,3 +122,9 @@ curl http://127.0.0.1:8000/meta-leads/health
 - O dedup por `leadgen_id` evita reprocessar (e reenviar pro GHL) o mesmo lead em caso
   de reentrega da Meta; em falha transiente o lead NÃO entra no dedup e o `500` faz a
   Meta reenviar — lead não se perde.
+- **Caveat de retry:** os retries da Meta em cima de `500` têm janela finita
+  (`[não verificado ao vivo]` — na ordem de horas/dias, não indefinida). Se o GHL ficar
+  fora por mais tempo que essa janela, o lead do caminho do webhook pode expirar sem
+  nunca ser entregue. O transporte **primário** continua sendo a integração nativa
+  GHL↔Facebook (ver `flows/crm/SKILL.md` do plugin) — este receiver é atribuição
+  detalhada + backup. Monitore o contador `errors` de `/meta-leads/health`.

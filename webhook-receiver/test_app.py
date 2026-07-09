@@ -93,6 +93,26 @@ def test_post_malformed_signed_200():
     assert r.status_code == 200
     assert any(json.loads(l)["status"] == "malformed" for l in appmod.LOG.read_text().splitlines())
 
+def test_post_error_then_malformed_entry_500_not_200(monkeypatch):
+    # Anomalia dupla: 1º entry falha o push (transiente, pendente de retry) e o
+    # 2º entry do MESMO payload é malformado (não é um dict, ex.: string solta no
+    # array "entry"). A malformação não pode engolir o retry pendente — resposta
+    # tem que ser 500 (não 200), senão a Meta acha que entregou com sucesso e o
+    # lead que falhou nunca é reentregue.
+    monkeypatch.setattr(appmod, "fetch_lead", lambda lid: {"id": lid, "field_data": []})
+    def boom(lead, cfg):
+        raise RuntimeError("GHL fora do ar")
+    monkeypatch.setattr(appmod, "push_to_ghl", boom)
+    body = json.dumps({"entry": [
+        {"changes": [{"field": "leadgen", "value": {
+            "leadgen_id": "L5", "page_id": "PAGE_TEST", "form_id": "F1", "created_time": 1}}]},
+        "entry-malformado-nao-e-dict",
+    ]}).encode()
+    r = client.post("/meta-leads", content=body, headers={"X-Hub-Signature-256": _sig(body)})
+    assert r.status_code == 500
+    assert "L5" not in _seen()
+    assert any(json.loads(l)["status"] == "malformed" for l in appmod.LOG.read_text().splitlines())
+
 def test_post_no_config_200_and_seen():
     # Página não onboarded: 200 + marcado seen (redelivery infinito não ajuda).
     body = _leadgen_body("L4", page="PAGE_DESCONHECIDA")

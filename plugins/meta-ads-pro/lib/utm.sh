@@ -93,6 +93,8 @@ build_tracking_parameters() {
   local slug today
   slug=$(slugify "$form_name")
   today=$(date +%Y%m%d)
+  # Em colisão de chave, o extra vence (intencional) — jq `+` entre objetos
+  # mantém o valor do lado direito quando a chave se repete.
   jq -nc --arg c "${today}_${slug}" --argjson extra "$extra" \
     '{utm_source:"meta-leadform", utm_medium:"trafego-pago", utm_campaign:$c} + $extra'
 }

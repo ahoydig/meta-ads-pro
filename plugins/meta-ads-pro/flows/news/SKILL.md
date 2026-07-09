@@ -19,7 +19,7 @@ Checagem sob demanda: "o que mudou na API da Meta e o que isso afeta neste plugi
 grep -m1 '^META_API_VERSION=' .env 2>/dev/null || true
 ```
 
-Se não achar no `.env` do projeto, o fallback é o default hardcoded em `lib/graph_api.sh:9` (`API_VERSION="${META_API_VERSION:-v25.0}"`). Essa é a versão de referência (`vX`) do restante do fluxo.
+Se não achar no `.env` do projeto, o fallback é o default hardcoded em `lib/graph_api.sh:10` (`API_VERSION="${META_API_VERSION:-v25.0}"`). Essa é a versão de referência (`vX`) do restante do fluxo.
 
 ## Passo 2 — Buscar o changelog oficial
 

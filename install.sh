@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — meta-ads-pro installer v1.0.0
+# install.sh — meta-ads-pro installer v1.1.0
 #
 # Instala o plugin em ~/.claude/plugins/local/meta-ads-pro/ + registra em
 # ~/.claude/plugins/installed_plugins.json + habilita em ~/.claude/settings.json.

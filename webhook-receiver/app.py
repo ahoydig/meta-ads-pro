@@ -25,7 +25,7 @@ def fetch_lead(leadgen_id: str) -> dict:
     # O payload do webhook só traz o leadgen_id (spike T4) — o dado do lead em si
     # (nome, e-mail, telefone, UTMs) só existe depois deste GET na Graph API.
     fields = "id,created_time,field_data,ad_id,adset_id,campaign_id,form_id"
-    url = (f"https://graph.facebook.com/{API_VERSION}/{leadgen_id}"
+    url = (f"https://graph.facebook.com/{API_VERSION}/{urllib.parse.quote(leadgen_id, safe='')}"
            f"?fields={fields}&access_token={urllib.parse.quote(META_TOKEN)}")
     with urllib.request.urlopen(url, timeout=15) as r:
         return json.loads(r.read())
@@ -114,6 +114,11 @@ async def receive(request: Request):
         # Payload malformado (mas COM assinatura válida — anomalia): 200, retry não
         # conserta malformação. Fica registrado pro doctor via contador malformed.
         _log({"t": time.time(), "status": "malformed", "reason": str(e)})
+        if had_error:
+            # Anomalia dupla: já havia uma falha transiente pendente de retry
+            # (Graph/GHL fora) quando a malformação interrompeu o loop — não pode
+            # engolir esse retry respondendo 200; a Meta precisa reentregar.
+            raise HTTPException(500)
         return {"ok": True}
     if had_error:
         raise HTTPException(500)
@@ -123,9 +128,16 @@ async def receive(request: Request):
 def health():
     lines = LOG.read_text().splitlines() if LOG.exists() else []
     counts = {"pushed": 0, "errors": 0, "no_config": 0, "malformed": 0}
+    malformed_log_lines = 0
     last = None
     for line in lines:
-        rec = json.loads(line)
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            # Linha corrompida no events.jsonl (escrita parcial, disco cheio, etc.)
+            # não pode derrubar o /health — conta à parte e segue pras próximas linhas.
+            malformed_log_lines += 1
+            continue
         st = rec.get("status", "")
         if st == "pushed":
             counts["pushed"] += 1
@@ -135,5 +147,6 @@ def health():
             counts[st] += 1
         last = rec
     return {"received_total": len(lines), **counts,
+            "malformed_log_lines": malformed_log_lines,
             "last_event_at": last and last.get("t"),
             "last_status": last and last.get("status")}

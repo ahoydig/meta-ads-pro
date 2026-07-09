@@ -255,3 +255,14 @@ documente"). Retomar depois que §8 e §10 forem resolvidos por um humano:
 | mTLS — opção na tela do painel Meta | ✅ documentado (existe, desligada, não ativada) |
 | `META_APP_SECRET` | ❌ BLOCKED — precisa de humano (reauth por senha) |
 | Teste e2e com lead de teste | ⏭️ pulado (depende dos 2 blockers acima) |
+
+## Caveat operacional — janela de retry finita
+
+Os retries automáticos da Meta em cima de `500` não são indefinidos —
+`[não verificado ao vivo]` a janela é da ordem de horas/dias, não permanente. Se o GHL
+ficar fora do ar (ou `META_APP_SECRET`/rota pública pendente, como neste runbook) por
+mais tempo que essa janela, leads que dependiam só do caminho do webhook podem expirar
+sem nunca chegar ao GHL. O transporte **primário** do pipeline é sempre a integração
+nativa GHL↔Facebook (`flows/crm/SKILL.md` do plugin) — este receiver é atribuição
+detalhada + backup, não o único caminho. Monitore o contador `errors` de
+`GET /meta-leads/health` pra pegar acúmulo de falhas antes que a janela de retry feche.
