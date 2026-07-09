@@ -33,7 +33,7 @@ Se o WebFetch falhar (timeout, 404, bloqueio) em qualquer uma dessas: **reportar
 
 ## Passo 3 — Cruzar com a superfície do plugin
 
-Superfície real de endpoints/campos que o plugin toca hoje (pós-v1.1) — **manter esta lista viva: todo novo flow que adicionar um recurso novo da Graph/Marketing API deve entrar aqui**:
+Superfície real do plugin (v1.1) — **manter esta lista viva: todo novo flow que adicionar um recurso novo da Graph/Marketing API deve entrar aqui**:
 
 | Recurso | Onde é usado | Observação |
 |---|---|---|

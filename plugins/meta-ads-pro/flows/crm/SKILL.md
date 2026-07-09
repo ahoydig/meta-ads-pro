@@ -397,8 +397,8 @@ como contrato fechado até a Task 23 confirmar com a subconta real.
    (não existe opção "CRM"/"Servidor" dedicada — o código é do DATASET, não do canal;
    qualquer opção do dropdown expõe o mesmo test_event_code)
 3. Expanda "Confirme se os eventos do seu servidor estão configurados corretamente"
-   → copie o test_event_code: TESTxxxxx
-4. Salve no .env do projeto: CAPI_TEST_EVENT_CODE=TESTxxxxx
+   → copie o test_event_code: <TEST_EVENT_CODE>
+4. Salve no .env do projeto: CAPI_TEST_EVENT_CODE=<TEST_EVENT_CODE>
    (não é secret persistente — expira; ok aparecer em log de execução, mas o .env
    em si já é gitignored por padrão neste plugin)
 ```
@@ -415,6 +415,9 @@ mencionar "eventos do site, app, CRM e servidor".
 ```bash
 source "$CLAUDE_PLUGIN_ROOT/lib/graph_api.sh"
 em=$(echo -n "teste@ahoy.digital" | shasum -a 256 | awk '{print $1}')
+# ⚠ este exemplo de teste hasheia o telefone COM o "+" — ok pro test_event_code (a Meta
+# não valida EMQ em eventos de teste), mas NÃO copiar pra produção: o formato exigido pra
+# EMQ real é digits-only (só código de país + número, sem "+"/espaços/símbolos).
 ph=$(echo -n "+5591999999999" | shasum -a 256 | awk '{print $1}')
 payload=$(jq -nc --arg em "$em" --arg ph "$ph" --arg tec "$CAPI_TEST_EVENT_CODE" \
   --argjson now "$(date +%s)" '{

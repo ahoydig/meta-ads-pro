@@ -360,6 +360,9 @@ test_11_conditional_logic() {
   fi
 
   # Falhou (esperado) — mas precisa ser o MESMO erro documentado, não "qualquer erro".
+  # Não asserta o índice "questions[3]" (só code + mensagem): o índice depende do número
+  # de perguntas base de build_minimal_form_payload, que pode mudar em task futura; fixar
+  # o índice deixaria o guard-rail frágil a um refactor não relacionado a este achado.
   local err_code err_msg
   err_code=$(echo "$response" | jq -r '.error.code // empty' 2>/dev/null) || err_code=""
   err_msg=$(echo "$response" | jq -r '.error.message // empty' 2>/dev/null) || err_msg=""

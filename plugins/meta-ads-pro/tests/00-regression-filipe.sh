@@ -385,7 +385,8 @@ test_bug_05_media_fbid_hygiene() {
   source "$upload_media"
 
   # Isolated manifest — não toca em runs reais
-  local run_id="regression_bug05_$$_$(date +%s)"
+  local run_id
+  run_id="regression_bug05_$$_$(date +%s)"
   local manifest_dir="${HOME}/.claude/meta-ads-pro/current"
   local manifest="${manifest_dir}/${run_id}.json"
   mkdir -p "$manifest_dir"

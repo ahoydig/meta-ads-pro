@@ -20,7 +20,7 @@ fi
 
 AD_ACCOUNT_ID="${AD_ACCOUNT_ID:-act_763408067802379}"
 TEST_PREFIX="TEST_CRUD_$$_$(date +%s)"
-MIN_BUDGET_CENTS=1000  # R$10,00 — folga acima do min_daily_budget=518 do Flávio
+MIN_BUDGET_CENTS=1000  # R$10,00 — folga acima do min_daily_budget=522 do Flávio
 
 # shellcheck source=../lib/graph_api.sh disable=SC1091
 source "$PLUGIN_ROOT/lib/graph_api.sh"

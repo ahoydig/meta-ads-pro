@@ -56,7 +56,7 @@ _mk_adset_payload_no_po() {
     destination_type: $dt,
     optimization_goal: $og,
     billing_event: "IMPRESSIONS",
-    daily_budget: 518,
+    daily_budget: 600,
     targeting: {
       geo_locations: {countries: ["BR"]},
       targeting_automation: {advantage_audience: 0}
@@ -74,7 +74,7 @@ _mk_adset_payload_with_po_page() {
     destination_type: $dt,
     optimization_goal: $og,
     billing_event: "IMPRESSIONS",
-    daily_budget: 518,
+    daily_budget: 600,
     promoted_object: {page_id: $p},
     targeting: {
       geo_locations: {countries: ["BR"]},

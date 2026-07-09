@@ -443,7 +443,7 @@ Meta não permite editar form com leads. Fluxo:
 graph_api GET "${form_id}/leads?fields=id,created_time,field_data&limit=500"
 ```
 
-Converte pra CSV via `python3 lib/_py/leads_to_csv.py` (a ser criado em CP3c).
+Converte pra CSV via `python3 lib/_py/leads_to_csv.py`.
 
 ### `--delete {form_id}`
 

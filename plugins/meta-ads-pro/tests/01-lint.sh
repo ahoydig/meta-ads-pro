@@ -29,6 +29,32 @@ else
   fi
 fi
 
+# ── shellcheck (tests/) ───────────────────────────────────────────────────────
+# Extensão v1.1.0 — antes só cobríamos lib/*.sh, tests/*.sh era um blind spot.
+echo "→ shellcheck (tests/)"
+if ! command -v shellcheck &>/dev/null; then
+  _skip "shellcheck (tests/) não instalado"
+else
+  test_sh_files=()
+  while IFS= read -r f; do
+    test_sh_files+=("$(basename "$f")")
+  done < <(find "$PLUGIN_ROOT/tests" -maxdepth 1 -name "*.sh" -type f | sort)
+  if (( ${#test_sh_files[@]} == 0 )); then
+    _skip "shellcheck (tests/): nenhum .sh encontrado em tests/"
+  else
+    # `-x` + nomes SEM diretório + cd pra dentro de tests/: é a única combinação
+    # que faz o resolvedor do shellcheck seguir de verdade os
+    # `source "$(dirname "$0")/../lib/x.sh"` dinâmicos e não gerar dezenas de
+    # SC1091 falso-positivos (comportamento observado: com path relativo tipo
+    # "tests/x.sh" a partir da raiz do plugin ele NÃO resolve).
+    if (cd "$PLUGIN_ROOT/tests" && shellcheck -x "${test_sh_files[@]}"); then
+      _pass "shellcheck (tests/): ${#test_sh_files[@]} arquivo(s) OK"
+    else
+      _fail "shellcheck (tests/): erros encontrados"
+    fi
+  fi
+fi
+
 # ── yamllint (com key-duplicates) ─────────────────────────────────────────────
 echo "→ yamllint"
 if ! command -v yamllint &>/dev/null; then
