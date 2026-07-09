@@ -88,6 +88,7 @@ Tabela de roteamento:
 | "listar campanhas", "ver campanhas ativas" | `campanha/` (modo listagem) |
 | "pausar", "ativar", "editar campanha X" | `campanha/` (modo edição) |
 | "criar form", "lead form", "formulário" | `lead-forms/` |
+| "impulsionar", "boost", "patrocinar post/reel", "turbinar publicação" | `boost/` |
 | "diagnosticar", "doctor", "o que tá errado" | `doctor/` |
 | "configurar", "setup", "trocar conta" | `setup/` |
 | "importar", "importar dados existentes" | `import-existing/` |
@@ -154,6 +155,7 @@ Se [1] ou [2], chama `/meta-ads-doctor --review-learnings`.
 | Conjuntos | `/meta-ads-conjuntos` | Ad sets com 5 destinos |
 | Anúncios | `/meta-ads-anuncios` | Creatives Normal/Dinâmico + upload + geração copy |
 | Lead Forms | `/meta-ads-lead-forms` | Instant Forms CRUD |
+| Boost | `/meta-ads-boost` | Impulsionar post/Reel já publicado do IG (social proof preservado) |
 | Públicos | `/meta-ads-publicos` | Custom audiences + lookalikes |
 | Regras | `/meta-ads-regras` | Automated rules |
 | Insights | `/meta-ads-insights` | Relatórios de performance |
