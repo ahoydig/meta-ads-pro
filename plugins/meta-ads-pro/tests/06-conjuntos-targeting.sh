@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/06-conjuntos-targeting.sh — 18 testes do skill conjuntos (Task 2b.2)
+# tests/06-conjuntos-targeting.sh — 19 testes do skill conjuntos (Task 2b.2 + Task 17)
 #
 # Cobertura:
 #   5 destinos:   SITE, LEAD_FORM, WHATSAPP, MESSENGER, CALL
@@ -8,6 +8,7 @@
 #   Targeting:    CEP geocode, raio custom, interesses, lookalike, broad,
 #                 advantage ON/OFF (bug #2) — ambos com GET back validando
 #                 persistência do advantage_audience
+#   Exclusões:    excluded_custom_audiences persiste via GET back (Task 17)
 #   Features:     reachestimate, dayparting, frequency_cap
 #   CRUD:         pause/activate, edit budget, delete-ACTIVE-blocked (skill guard)
 #
@@ -181,16 +182,22 @@ fi
 # ── cleanup de objetos criados ────────────────────────────────────────────────
 CREATED_ADSETS=()
 CREATED_CAMPAIGNS=()
+CREATED_AUDIENCES=()
 
 cleanup() {
   local rc=$?
-  # Deleta ad sets primeiro (depende de campanhas), depois campanhas
+  # Deleta ad sets primeiro (depende de campanhas/audiences), depois campanhas,
+  # depois custom audiences (Task 17 — test_excluded_custom_audience)
   local id
   for id in "${CREATED_ADSETS[@]}"; do
     [[ -n "$id" && "$id" != "null" ]] || continue
     graph_api DELETE "$id" >/dev/null 2>&1 || true
   done
   for id in "${CREATED_CAMPAIGNS[@]}"; do
+    [[ -n "$id" && "$id" != "null" ]] || continue
+    graph_api DELETE "$id" >/dev/null 2>&1 || true
+  done
+  for id in "${CREATED_AUDIENCES[@]}"; do
     [[ -n "$id" && "$id" != "null" ]] || continue
     graph_api DELETE "$id" >/dev/null 2>&1 || true
   done
@@ -573,11 +580,68 @@ test_advantage_audience_on() {
   fi
 }
 
+# 13. Exclusão de público (excluded_custom_audiences) — Task 17, Track C
+# Caso de uso âncora: excluir leads-crm-180d (já é paciente/lead) das
+# campanhas de captação. Cria uma custom audience mínima (subtype CUSTOM),
+# usa como exclusão num ad set WEBSITE/LINK_CLICKS (mesmo idiom de
+# test_targeting_broad — sem promoted_object, sem depender de PAGE_ID) e
+# valida via GET back que excluded_custom_audiences persistiu.
+test_excluded_custom_audience() {
+  local aud_payload aud_resp aud
+  aud_payload=$(jq -nc '{
+    name: "TEST_AUD_EXCL_'"$$"'_'"$RANDOM"'",
+    subtype: "CUSTOM",
+    description: "teste exclusão de público (Task 17)",
+    customer_file_source: "USER_PROVIDED_ONLY"
+  }')
+  aud_resp=$(graph_api POST "${AD_ACCOUNT_ID}/customaudiences" "$aud_payload" 2>&1) || {
+    _fail "test_excluded_custom_audience" "customaudiences POST: $aud_resp"; return
+  }
+  aud=$(echo "$aud_resp" | jq -r '.id // empty')
+  [[ -n "$aud" ]] || { _fail "test_excluded_custom_audience" "sem id de audience: $aud_resp"; return; }
+  CREATED_AUDIENCES+=("$aud")
+
+  local camp; camp=$(mk_campaign) || { _fail "test_excluded_custom_audience" "mk_campaign"; return; }
+  local name="TEST_ADSET_EXCL_$$_$RANDOM"
+  local payload
+  # daily_budget 1000 (não 518) + bid_strategy explícito: a conta está
+  # rejeitando o fixture padrão (518 + bid_strategy implícito) com
+  # 100/2490487 "valor/restrição de lance obrigatórios" — mesma classe do
+  # fixture bid/budget pré-existente quebrado em 05/06 (ver ledger). Não
+  # mexemos em base_adset_payload (fora do escopo desta task); este teste
+  # usa valores que contornam o problema sem tocar no fixture compartilhado.
+  payload=$(jq -nc --arg n "$name" --arg c "$camp" --arg aud "$aud" '{
+    name: $n, campaign_id: $c, status: "PAUSED",
+    destination_type: "WEBSITE", optimization_goal: "LINK_CLICKS",
+    billing_event: "IMPRESSIONS", daily_budget: 1000,
+    bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+    targeting: {
+      geo_locations: {countries: ["BR"]},
+      excluded_custom_audiences: [{id: $aud}],
+      targeting_automation: {advantage_audience: 0}
+    }
+  }')
+  local resp id
+  resp=$(graph_api POST "${AD_ACCOUNT_ID}/adsets" "$payload" 2>&1) || { _fail "test_excluded_custom_audience" "$resp"; return; }
+  id=$(echo "$resp" | jq -r '.id // empty')
+  [[ -n "$id" ]] || { _fail "test_excluded_custom_audience" "sem id: $resp"; return; }
+  CREATED_ADSETS+=("$id")
+
+  local back excl_id
+  back=$(graph_api GET "${id}?fields=targeting") || { _fail "test_excluded_custom_audience" "GET back falhou"; return; }
+  excl_id=$(echo "$back" | jq -r '.targeting.excluded_custom_audiences[0].id // empty')
+  if [[ "$excl_id" == "$aud" ]]; then
+    _pass "test_excluded_custom_audience ($id, excluded_custom_audiences=$aud)"
+  else
+    _fail "test_excluded_custom_audience" "exclusão não persistiu: $back"
+  fi
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # FEATURES
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 13. Reach estimate
+# 14. Reach estimate
 test_reach_estimate() {
   local targeting
   targeting=$(jq -nc '{
@@ -599,7 +663,7 @@ test_reach_estimate() {
   fi
 }
 
-# 14. Dayparting (adset_schedule + pacing_type)
+# 15. Dayparting (adset_schedule + pacing_type)
 test_dayparting() {
   local camp; camp=$(mk_campaign) || { _fail "test_dayparting" "mk_campaign"; return; }
   local name="TEST_ADSET_DAYPART_$$_$RANDOM"
@@ -636,7 +700,7 @@ test_dayparting() {
   fi
 }
 
-# 15. Frequency cap (frequency_control_specs)
+# 16. Frequency cap (frequency_control_specs)
 test_frequency_cap() {
   local camp; camp=$(mk_campaign) || { _fail "test_frequency_cap" "mk_campaign"; return; }
   local name="TEST_ADSET_FREQ_$$_$RANDOM"
@@ -668,7 +732,7 @@ test_frequency_cap() {
 # CRUD (espelha 05-campanha-crud.sh — pause/activate, edit, delete guard)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 16. pause + activate
+# 17. pause + activate
 test_adset_pause_activate() {
   local camp; camp=$(mk_campaign) || { _fail "test_adset_pause_activate" "mk_campaign"; return; }
   local payload; payload=$(base_adset_payload "TEST_ADSET_PAUSE_$$_$RANDOM" "$camp" "WEBSITE" "LINK_CLICKS")
@@ -699,7 +763,7 @@ test_adset_pause_activate() {
   fi
 }
 
-# 17. edit budget (valida persistência do novo daily_budget)
+# 18. edit budget (valida persistência do novo daily_budget)
 test_adset_edit_budget() {
   local camp; camp=$(mk_campaign) || { _fail "test_adset_edit_budget" "mk_campaign"; return; }
   local payload; payload=$(base_adset_payload "TEST_ADSET_EDIT_$$_$RANDOM" "$camp" "WEBSITE" "LINK_CLICKS")
@@ -721,7 +785,7 @@ test_adset_edit_budget() {
   fi
 }
 
-# 18. delete ACTIVE bloqueado pela skill (guard no skill/conjuntos/SKILL.md)
+# 19. delete ACTIVE bloqueado pela skill (guard no skill/conjuntos/SKILL.md)
 # Meta API aceita DELETE em ACTIVE, mas a skill deve bloquear antes.
 # Esse teste espelha a regra — chamamos a API direto como smoke, mas a
 # validação real é que a skill implementa o guard (documentado na SKILL.md).
@@ -772,6 +836,7 @@ for t in \
   test_targeting_broad \
   test_advantage_audience_off \
   test_advantage_audience_on \
+  test_excluded_custom_audience \
   test_reach_estimate \
   test_dayparting \
   test_frequency_cap \

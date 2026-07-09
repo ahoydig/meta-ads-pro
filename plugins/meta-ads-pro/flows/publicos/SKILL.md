@@ -430,7 +430,7 @@ Quando o usuário disser **"sugira públicos para mim"** ou **"quais públicos d
 |---|--------------|------|--------|
 | 1 | `visitou-pagina-servicos-30d` | Website | URL da página de serviços, 30 dias |
 | 2 | `engajadores-ig-90d` | Engagement IG | `ig_user_interacted`, 90 dias |
-| 3 | `leads-crm-180d` | Customer File | Lista de leads/agendamentos |
+| 3 | `leads-crm-180d` | Customer File | Lista de leads/agendamentos — usar também como EXCLUSÃO nas campanhas de captação |
 | 4 | `lal_leads-1pct_br` | Lookalike | Origem: lista de leads, 1%, BR |
 
 ---
