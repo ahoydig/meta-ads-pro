@@ -14,6 +14,13 @@ SEEN = STATE / "seen_leadgen_ids.txt"; LOG = STATE / "events.jsonl"
 
 def _log(rec): LOG.open("a").write(json.dumps(rec, ensure_ascii=False) + "\n")
 
+def _save_seen(seen: set) -> None:
+    # Escrita atômica: tmp no MESMO diretório + os.replace (rename atômico no mesmo fs).
+    # Constraint HARD: dedup por arquivo só funciona com UM worker (uvicorn sem --workers).
+    tmp = SEEN.with_suffix(".tmp")
+    tmp.write_text("\n".join(sorted(seen)))
+    os.replace(tmp, SEEN)
+
 def fetch_lead(leadgen_id: str) -> dict:
     # O payload do webhook só traz o leadgen_id (spike T4) — o dado do lead em si
     # (nome, e-mail, telefone, UTMs) só existe depois deste GET na Graph API.
@@ -67,30 +74,66 @@ async def receive(request: Request):
     if not hmac.compare_digest(sig, expected):
         raise HTTPException(403)
     seen = set(SEEN.read_text().split()) if SEEN.exists() else set()
-    for entry in json.loads(raw).get("entry", []):
-        for change in entry.get("changes", []):
-            if change.get("field") != "leadgen":
-                continue
-            v = change["value"]; lid = str(v["leadgen_id"]); page = str(v.get("page_id", ""))
-            if lid in seen:
-                continue
-            cfg = CONFIG.get(page)
-            if not cfg:
-                _log({"t": time.time(), "leadgen_id": lid, "page_id": page, "status": "no_config"})
-                continue
-            try:
-                lead = fetch_lead(lid)
-                push_to_ghl(lead, cfg)
-                status = "pushed"
-            except Exception as e:  # loga e segue — Meta reenvia em falha 5xx, aqui escolhemos não duplicar
-                status = f"error:{e}"
-            seen.add(lid); SEEN.write_text("\n".join(seen))
-            _log({"t": time.time(), "leadgen_id": lid, "page_id": page, "form_id": v.get("form_id"), "status": status})
+    had_error = False
+    try:
+        for entry in json.loads(raw).get("entry", []):
+            for change in entry.get("changes", []):
+                if change.get("field") != "leadgen":
+                    continue
+                v = change.get("value") or {}
+                if not v.get("leadgen_id"):
+                    _log({"t": time.time(), "status": "malformed",
+                          "reason": "change leadgen sem leadgen_id"})
+                    continue
+                lid = str(v["leadgen_id"]); page = str(v.get("page_id", ""))
+                if lid in seen:
+                    continue
+                cfg = CONFIG.get(page)
+                if not cfg:
+                    # Página não onboarded: marca seen + 200 — redelivery infinito não
+                    # ajuda; o doctor alerta via contador no_config do /health.
+                    seen.add(lid); _save_seen(seen)
+                    _log({"t": time.time(), "leadgen_id": lid, "page_id": page, "status": "no_config"})
+                    continue
+                try:
+                    lead = fetch_lead(lid)
+                    push_to_ghl(lead, cfg)
+                except Exception as e:
+                    # Falha transiente (Graph/GHL fora): NÃO marca seen e responde 500
+                    # no fim — a Meta reenvia com backoff em falha 5xx (é o mecanismo
+                    # de retry). O dedup garante que leads já pushed no mesmo payload
+                    # não duplicam na reentrega.
+                    had_error = True
+                    _log({"t": time.time(), "leadgen_id": lid, "page_id": page,
+                          "form_id": v.get("form_id"), "status": f"error:{e}", "will_retry": True})
+                    continue
+                seen.add(lid); _save_seen(seen)
+                _log({"t": time.time(), "leadgen_id": lid, "page_id": page,
+                      "form_id": v.get("form_id"), "status": "pushed"})
+    except (ValueError, AttributeError, TypeError) as e:
+        # Payload malformado (mas COM assinatura válida — anomalia): 200, retry não
+        # conserta malformação. Fica registrado pro doctor via contador malformed.
+        _log({"t": time.time(), "status": "malformed", "reason": str(e)})
+        return {"ok": True}
+    if had_error:
+        raise HTTPException(500)
     return {"ok": True}
 
 @app.get("/meta-leads/health")
 def health():
     lines = LOG.read_text().splitlines() if LOG.exists() else []
-    last = json.loads(lines[-1]) if lines else None
-    return {"received_total": len(lines), "last_event_at": last and last["t"],
-            "last_status": last and last["status"]}
+    counts = {"pushed": 0, "errors": 0, "no_config": 0, "malformed": 0}
+    last = None
+    for line in lines:
+        rec = json.loads(line)
+        st = rec.get("status", "")
+        if st == "pushed":
+            counts["pushed"] += 1
+        elif st.startswith("error:"):
+            counts["errors"] += 1
+        elif st in ("no_config", "malformed"):
+            counts[st] += 1
+        last = rec
+    return {"received_total": len(lines), **counts,
+            "last_event_at": last and last.get("t"),
+            "last_status": last and last.get("status")}

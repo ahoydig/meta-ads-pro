@@ -17,10 +17,28 @@ o comando de saúde do plugin (`doctor`, Task 21) consome o `/meta-leads/health`
 4. Resolve o cliente (`location_id` + token do GHL) pelo `page_id` do evento, olhando o
    config JSON.
 5. Empurra o lead pro GHL (`POST /contacts/upsert`), com dedup por `leadgen_id` (arquivo
-   `seen_leadgen_ids.txt` no `RECEIVER_STATE_DIR`) — evita duplicar contato se a Meta
-   reenviar o mesmo evento.
+   `seen_leadgen_ids.txt` no `RECEIVER_STATE_DIR`, escrito de forma atômica via tmp +
+   `os.replace`) — evita duplicar contato se a Meta reenviar o mesmo evento.
 6. Loga cada evento em `events.jsonl` (`RECEIVER_STATE_DIR`); `GET /meta-leads/health`
-   resume esse log (`received_total`, `last_event_at`, `last_status`).
+   resume esse log (total + contadores por status + último evento).
+
+## Semântica de retry (lead nunca se perde em falha transiente)
+
+| Situação | seen? | Resposta | Efeito |
+|---|---|---|---|
+| Lead buscado e empurrado pro GHL | sim | `200` | Fluxo normal (`status: pushed`). |
+| `fetch_lead`/`push_to_ghl` falhou (Graph/GHL fora, rede) | **não** | **`500`** | A Meta reenvia o evento com backoff automático — esse é o mecanismo de retry. Log com `status: error:...` e `will_retry: true`. Leads já pushed no mesmo payload não duplicam na reentrega (dedup). |
+| `page_id` sem entrada no config (`no_config`) | sim | `200` | Página não onboarded — redelivery infinito não ajuda. O doctor (Task 21) alerta pelo contador `no_config` do `/health`. |
+| Payload malformado (mas com assinatura válida — anomalia) | — | `200` | Retry não conserta malformação. Log com `status: malformed`. |
+| Assinatura inválida | — | `403` | Rejeitado antes de qualquer processamento. |
+
+## Constraint HARD: single worker
+
+O dedup é por arquivo (`seen_leadgen_ids.txt`) e **não suporta multi-processo**. O
+serviço DEVE rodar com **um único worker**: `uvicorn app:app` **sem `--workers`** (o
+default é 1). A Task 10 (deploy/systemd) precisa manter essa constraint no unit file
+— se um dia precisar de mais throughput, o dedup tem que migrar pra um store com lock
+(SQLite/Redis) antes de subir workers.
 
 ## Nota importante: UTMs chegam junto com os dados do lead
 
@@ -40,8 +58,8 @@ configurado no form, o valor é o ID do custom field correspondente no GHL. Ver
 | Rota | Método | Uso |
 |---|---|---|
 | `/meta-leads` | `GET` | Verificação do webhook (handshake `hub.mode`/`hub.verify_token`/`hub.challenge` da Meta). |
-| `/meta-leads` | `POST` | Recebe os eventos de leadgen, valida assinatura, busca o lead, empurra pro GHL. |
-| `/meta-leads/health` | `GET` | Health check — total recebido, timestamp e status do último evento. Consumido pelo `doctor` (Task 21). |
+| `/meta-leads` | `POST` | Recebe os eventos de leadgen, valida assinatura, busca o lead, empurra pro GHL. `500` em falha transiente (ver semântica de retry acima). |
+| `/meta-leads/health` | `GET` | Health check — `{"received_total": N, "pushed": N, "errors": N, "no_config": N, "malformed": N, "last_event_at": ..., "last_status": ...}`, tudo derivado do `events.jsonl`. Consumido pelo `doctor` (Task 21). |
 
 ## Variáveis de ambiente
 
@@ -77,12 +95,13 @@ ads daquele cliente. O valor tem:
 cd webhook-receiver
 python3 -m venv .venv
 .venv/bin/pip install fastapi uvicorn httpx pytest
-.venv/bin/pytest -q          # 6 testes, tudo com monkeypatch (sem chamada real à Meta/GHL)
+.venv/bin/pytest -q          # 9 testes, tudo com monkeypatch (sem chamada real à Meta/GHL)
 ```
 
 Pra subir localmente com env fake (smoke test, sem integração real):
 
 ```bash
+# ATENÇÃO: sempre SEM --workers (single worker — ver constraint acima).
 META_VERIFY_TOKEN=vtoken-dev META_APP_SECRET=secret-dev META_ACCESS_TOKEN=EAAdev \
 RECEIVER_CONFIG=config.example.json RECEIVER_STATE_DIR=/tmp/receiver-dev \
 .venv/bin/uvicorn app:app --port 8000
@@ -97,4 +116,5 @@ curl http://127.0.0.1:8000/meta-leads/health
 - A assinatura HMAC (`X-Hub-Signature-256`) é obrigatória em todo `POST` — eventos sem
   assinatura válida tomam `403`.
 - O dedup por `leadgen_id` evita reprocessar (e reenviar pro GHL) o mesmo lead em caso
-  de reentrega da Meta.
+  de reentrega da Meta; em falha transiente o lead NÃO entra no dedup e o `500` faz a
+  Meta reenviar — lead não se perde.
