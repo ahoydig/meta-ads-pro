@@ -109,7 +109,11 @@ test_bug_01_ABO_budget_sharing_flag() {
   local pos_payload pos_resp pos_id
   pos_payload=$(jq -nc --arg n "$name_pos" \
     '{name:$n, objective:"OUTCOME_LEADS", status:"PAUSED", special_ad_categories:[]}')
-  pos_resp=$(graph_api POST "${account}/campaigns" "$pos_payload" 2>&1) \
+  # Sem 2>&1: o error-resolver ecoa diagnóstico ("⚙ ...") em stderr quando
+  # aplica o fix — se misturado ao stdout aqui, contamina o JSON e quebra o
+  # jq abaixo (descoberto ao vivo nesta sessão; mascarado até agora pelo path
+  # stale do bug #4, que sempre abortava o script antes de chegar aqui).
+  pos_resp=$(graph_api POST "${account}/campaigns" "$pos_payload") \
     || _fail "test_bug_01_ABO_budget_sharing_flag" "phase 2 falhou — resolver não aplicou fix: $pos_resp"
   pos_id=$(echo "$pos_resp" | jq -r '.id // empty')
   [[ -n "$pos_id" && "$pos_id" != "null" ]] \
@@ -171,6 +175,9 @@ test_bug_02_advantage_audience() {
   # Payload base sem advantage_audience — combo isolado (WEBSITE + LINK_CLICKS
   # não exige promoted_object nem destination_type especial).
   # Sem bid_amount: campanha default LOWEST_COST_WITHOUT_CAP não aceita bid_amount.
+  # bid_strategy explícito: a conta passou a exigir esse campo em TODO ad set
+  # com budget próprio (100/2490487, achado ao vivo na T17/T22) — sem ele o
+  # POST falha antes de chegar no bug #2 que este teste quer isolar.
   _mk_adset_payload_bug02() {
     local name="$1"
     jq -nc --arg n "$name" --arg c "$camp_id" '{
@@ -179,6 +186,7 @@ test_bug_02_advantage_audience() {
       optimization_goal: "LINK_CLICKS",
       billing_event: "IMPRESSIONS",
       daily_budget: 518,
+      bid_strategy: "LOWEST_COST_WITHOUT_CAP",
       targeting: {geo_locations: {countries: ["BR"]}}
     }'
   }
@@ -211,7 +219,9 @@ test_bug_02_advantage_audience() {
   # ── Phase 2: positive (resolver ON) ────────────────────────────────────────
   local pos_payload pos_resp pos_id
   pos_payload=$(_mk_adset_payload_bug02 "$name_pos")
-  pos_resp=$(graph_api POST "${account}/adsets" "$pos_payload" 2>&1) \
+  # Sem 2>&1 — mesmo motivo do test_bug_01 (diagnóstico do resolver em stderr
+  # contaminaria o JSON parseado abaixo).
+  pos_resp=$(graph_api POST "${account}/adsets" "$pos_payload") \
     || {
       GRAPH_API_SKIP_RESOLVER=1 graph_api DELETE "$camp_id" >/dev/null 2>&1 || true
       _fail "test_bug_02_advantage_audience" "phase 2 falhou — resolver não aplicou fix: $pos_resp"
@@ -300,7 +310,7 @@ PYEOF
 # frase "1 único creative" (phase 1) OU o shape do payload fica errado
 # (phase 2) — teste falha.
 test_bug_04_no_cartesian_in_dynamic() {
-  local skill_md="$PLUGIN_ROOT/skills/anuncios/SKILL.md"
+  local skill_md="$PLUGIN_ROOT/flows/anuncios/SKILL.md"
   [[ -f "$skill_md" ]] || _fail "test_bug_04_no_cartesian_in_dynamic" "SKILL.md ausente"
 
   # ── Phase 1: contrato documentado ────────────────────────────────────────
