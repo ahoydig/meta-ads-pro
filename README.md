@@ -5,13 +5,40 @@
 ██║╚██╔╝██║██╔══╝     ██║   ██╔══██║    ██╔══██║██║  ██║╚════██║    ██╔═══╝ ██╔══██╗██║   ██║
 ██║ ╚═╝ ██║███████╗   ██║   ██║  ██║    ██║  ██║██████╔╝███████║    ██║     ██║  ██║╚██████╔╝
 ╚═╝     ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝    ╚═╝  ╚═╝╚═════╝ ╚══════╝    ╚═╝     ╚═╝  ╚═╝ ╚═════╝
-                            plugin Claude Code · v1.0.4 · by @flavioahoy
+                            plugin Claude Code · v1.1.0 · by @flavioahoy
 ```
 
 **Gerenciamento completo de Meta Ads via Graph API v25.0 direto no Claude Code.**
-Cinco destinos (Site, Lead Form, WhatsApp, Messenger, Call), criativos Normal e Dinâmico
-(`asset_feed_spec`), lead forms com qualifier/disqualifier, rollback transacional, error
-resolver com auto-learning e preview ASCII + HTML. Tudo portável bash 3.2+ (macOS / Linux).
+Cinco destinos (Site, Lead Form, WhatsApp, Messenger, Call) + boost de post/Reel do
+Instagram, criativos Normal, Dinâmico (`asset_feed_spec`) e Carrossel, lead forms com
+qualifier/disqualifier/tracking_parameters, integração CRM/GHL nativa com webhook
+receiver e CAPI, rollback transacional, error resolver com auto-learning e preview
+oficial da Meta + ASCII/HTML. Tudo portável bash 3.2+ (macOS / Linux).
+
+---
+
+## Novo na v1.1
+
+- **Boost de post/Reel do Instagram** (`/meta-ads-boost`) — impulsiona conteúdo orgânico
+  já publicado no IG sem criar dark post, com checagem de elegibilidade
+  (`boost_eligibility_info`) antes de qualquer escrita.
+- **Integração CRM/GHL nativa** (`/meta-ads-crm`) — status/mapear/testar contra o
+  GoHighLevel, com webhook receiver (leadgen → GHL) e push de `tracking_parameters` como
+  custom fields.
+- **CAPI (Conversions API)** — eventos server-side do funil (ex: `LeadQualificado`) via
+  `{pixel_id}/events`, com fluxo guiado de setup e teste (`test_event_code`).
+- **Lead forms mais completos** — `tracking_parameters` (UTM chega no `field_data` do
+  lead), CTAs reais de thank-you page (`VIEW_WEBSITE`, `CALL_BUSINESS`, `WHATSAPP`, etc),
+  condicionais com estado real documentado (qualificar/desqualificar suportado,
+  dropdowns encadeados parcial, branching não existe).
+- **Preview oficial da Meta** (`generatepreviews` / `{creative_id}/previews`) — iframe
+  real da Meta, além do preview ASCII/HTML local.
+- **Modo Carrossel** (`child_attachments`, 2–10 cartões) e **crop/placement avançado**
+  (`image_crops` aninhado, `asset_customization_rules` por posicionamento).
+- **Exclusões de público** no targeting (`excluded_custom_audiences`/`exclusions`).
+- **`/meta-ads-news`** — checagem sob demanda do changelog da Marketing API contra a
+  versão em uso do plugin (sem chamada à Graph API, só WebFetch).
+- **`/meta-ads-doctor`** com 14 checks (4 novos: GHL, receiver, subscrição leadgen, CAPI).
 
 ---
 
@@ -49,7 +76,7 @@ O installer:
 Depois de instalar (qualquer método):
 
 ```
-/meta-ads-menu       # porta de entrada — banner + menu dos 13 comandos
+/meta-ads-menu       # porta de entrada — banner + menu dos 17 comandos
 /meta-ads-setup      # configuração inicial (11 passos)
 /meta-ads-doctor     # diagnóstico do ambiente
 ```
@@ -58,21 +85,24 @@ Depois de instalar (qualquer método):
 
 ## Commands
 
-14 slash commands cobrem todo o ciclo:
+17 slash commands cobrem todo o ciclo:
 
 | Command | O que faz |
 |---------|-----------|
 | `/meta-ads-menu` | Menu central — banner + lista dos comandos agrupados + jornadas típicas |
 | `/meta-ads-setup` | Setup inicial: valida token, descobre recursos, grava `.env` + `CLAUDE.md` |
-| `/meta-ads-doctor` | 10 checks de ambiente + 6 flags (`--fix`, `--silent`, `--report`, `--release-lock`, `--review-learnings`) |
+| `/meta-ads-doctor` | 14 checks de ambiente (GHL, receiver, leadgen, CAPI incluídos) + 6 flags (`--fix`, `--silent`, `--report`, `--release-lock`, `--review-learnings`) |
 | `/meta-ads-campanha` | CRUD de campanhas (criar em 8 passos, list/edit/pause/activate/delete) |
-| `/meta-ads-conjuntos` | CRUD de ad sets com 5 destinos + geocoding ViaCEP/Nominatim |
-| `/meta-ads-anuncios` | Criar anúncios Normal ou Dinâmico com upload multipart + copy humanizada |
-| `/meta-ads-lead-forms` | Instant Forms: criar/listar/editar/deletar/export + qualifier/disqualifier |
-| `/meta-ads-publicos` | Custom audiences + Lookalikes + Website/Pixel audiences |
+| `/meta-ads-conjuntos` | CRUD de ad sets com 5 destinos + exclusões de público + geocoding ViaCEP/Nominatim |
+| `/meta-ads-anuncios` | Criar anúncios Normal, Dinâmico ou Carrossel, com upload multipart, crop/placement avançado e copy humanizada |
+| `/meta-ads-boost` | Impulsiona post/Reel já publicado no Instagram (sem dark post), com checagem de elegibilidade |
+| `/meta-ads-lead-forms` | Instant Forms: criar/listar/editar/deletar/export + qualifier/disqualifier + tracking_parameters |
+| `/meta-ads-crm` | Integração nativa GHL — status/mapear/testar + setup/teste de CAPI |
+| `/meta-ads-publicos` | Custom audiences + Lookalikes + Website/Pixel audiences (saved audiences somente leitura) |
 | `/meta-ads-regras` | Automated rules (6 templates + construtor custom) |
 | `/meta-ads-insights` | Relatórios de performance em qualquer nível + breakdowns + async reports |
 | `/meta-ads-import-existing` | Importa estrutura pré-plugin (GET-only, zero escrita) |
+| `/meta-ads-news` | Checagem sob demanda do changelog da Marketing API (sem chamada à Graph API) |
 | `/meta-ads-rollback {run_id}` | Rollback manual topológico de um run específico |
 | `/meta-ads-update` | `git fetch && pull --ff-only && ./install.sh` + mostra CHANGELOG |
 | `/meta-ads-analyze-telemetry` | Relatório local de uso (top erros, taxa sucesso, duração) |
@@ -206,16 +236,17 @@ Ou via env: `META_ADS_DRY_RUN=1`, `META_ADS_NO_TELEMETRY=1`, `META_ADS_COPY_MOCK
 **Primeira parada é sempre o doctor:**
 
 ```bash
-/meta-ads-doctor              # 10 checks
+/meta-ads-doctor              # 14 checks
 /meta-ads-doctor --fix        # tenta fix automático (ex: migrar legacy config)
 /meta-ads-doctor --report     # snapshot JSON em ~/.claude/meta-ads-pro/reports/
 /meta-ads-doctor --release-lock       # remove lockfile órfão após crash
 /meta-ads-doctor --review-learnings   # revisa padrões de erro aprendidos
 ```
 
-Os 10 checks cobrem: token válido, scopes corretos, app mode (Live vs Dev),
+Os 14 checks cobrem: token válido, scopes corretos, app mode (Live vs Dev),
 rate limit, ad account acessível, page token, pixel disponível, `CLAUDE.md`
-presente, learnings consistentes, sips/ImageMagick disponível.
+presente, learnings consistentes, sips/ImageMagick disponível, GHL configurado,
+webhook receiver saudável, subscrição da Página em leadgen, dataset CAPI ativo.
 
 Se o doctor falhar, a mensagem inclui o fix exato (comando pra rodar, link
 pra Graph API Explorer, ou passo manual).

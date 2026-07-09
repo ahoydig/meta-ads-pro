@@ -1,7 +1,7 @@
 {
   "name": "meta-ads-pro",
-  "version": "1.0.6",
-  "description": "Gerenciamento completo de Meta Ads via Graph API direto no Claude Code. 5 destinos (site/lead form/WhatsApp/Messenger/call), asset_feed_spec, lead forms com qualifier/disqualifier, rollback transacional, error resolver com auto-learning.",
+  "version": "1.1.0",
+  "description": "Gerenciamento completo de Meta Ads via Graph API direto no Claude Code. 5 destinos (site/lead form/WhatsApp/Messenger/call) + boost de post/Reel do Instagram, asset_feed_spec, carrossel, image_crops e asset_customization_rules por placement, lead forms com qualifier/disqualifier/tracking_parameters, preview oficial da Meta, exclusões de público, integração CRM/GHL nativa com webhook receiver e CAPI, rollback transacional, error resolver com auto-learning.",
   "author": {
     "name": "Flávio Rafael Montenegro",
     "url": "https://github.com/flavioahoy",
