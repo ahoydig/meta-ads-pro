@@ -58,14 +58,23 @@ _pass() { echo "✓ $1"; PASS=$((PASS + 1)); }
 _fail() { echo "✗ $1: $2" >&2; FAIL=$((FAIL + 1)); exit 1; }
 
 # Constrói payload base ABO (sem daily_budget)
-# args: name objective bid_strategy
+# args: name objective bid_strategy (3º arg mantido por compat de call sites,
+# mas NÃO vai no payload — ver nota abaixo)
+#
+# bid_strategy NÃO entra no payload da campanha em ABO (achado ao vivo T22):
+# a conta passou a rejeitar bid_strategy no nível da campanha quando ela não
+# tem daily_budget próprio — erro 100/1885737 "Esta campanha não tem
+# orçamento. Adicione um orçamento para editar a estratégia de lance."
+# Mesma regra geral do bid_strategy-precisa-acompanhar-o-orçamento já
+# encontrada no lado do ad set (100/2490487, tests/06 + flows/conjuntos):
+# em ABO, quem tem budget é o ad set — é lá que bid_strategy deve viver, não
+# na campanha (que fica sem daily_budget por design do ABO).
 _payload_abo() {
   jq -nc \
     --arg n "$1" \
     --arg o "$2" \
-    --arg b "$3" \
     '{name:$n, objective:$o, status:"PAUSED", special_ad_categories:[],
-      is_adset_budget_sharing_enabled:false, bid_strategy:$b}'
+      is_adset_budget_sharing_enabled:false}'
 }
 
 # Constrói payload CBO (com daily_budget em centavos)
@@ -82,6 +91,19 @@ _payload_cbo() {
 
 # POST + retorna id. Aborta teste se falhar.
 # args: name payload test_name
+#
+# NOTA (leak de órfãos, mesmo achado do mk_campaign em tests/06 — T22):
+# esta função roda dentro do subshell de `id=$(_create_campaign ...)` no
+# caller. Um `CLEANUP_IDS+=(...)` FEITO AQUI DENTRO só existe na cópia do
+# array do subshell e some quando ele termina (bash 3.2, sem shared memory
+# entre subshells) — o CLEANUP_IDS do script principal nunca recebia os ids,
+# e ficava permanentemente vazio. Dois efeitos: (a) toda campanha criada por
+# este arquivo vazava (o trap de cleanup nunca via nada pra apagar); (b) sob
+# `set -u`, um array bash 3.2 com ZERO elementos dá "unbound variable" na
+# primeira vez que alguém faz `"${CLEANUP_IDS[@]}"` sem guarda (reproduzido
+# ao vivo: crashava em test_camp_delete_paused, a 1ª expansão direta do
+# array no arquivo). Fix: só ecoa o id; cada CALL SITE abaixo faz
+# `CLEANUP_IDS+=("$id")` no shell principal, fora do subshell.
 _create_campaign() {
   local payload="$1"
   local test_name="$2"
@@ -90,7 +112,6 @@ _create_campaign() {
     || _fail "$test_name" "POST falhou: $resp"
   id=$(echo "$resp" | jq -r '.id // empty')
   [[ -n "$id" ]] || _fail "$test_name" "response sem id: $resp"
-  CLEANUP_IDS+=("$id")
   echo "$id"
 }
 
@@ -129,6 +150,7 @@ test_camp_create_outcome_leads_abo() {
 
   local id
   id=$(_create_campaign "$payload" "test_camp_create_outcome_leads_abo")
+  CLEANUP_IDS+=("$id")
   _pass "test_camp_create_outcome_leads_abo (id=$id)"
 }
 
@@ -145,6 +167,7 @@ test_camp_create_outcome_sales_cbo() {
 
   local id
   id=$(_create_campaign "$payload" "test_camp_create_outcome_sales_cbo")
+  CLEANUP_IDS+=("$id")
   _pass "test_camp_create_outcome_sales_cbo (id=$id)"
 }
 
@@ -155,6 +178,7 @@ test_camp_create_outcome_traffic() {
   payload=$(_payload_abo "$name" "OUTCOME_TRAFFIC" "LOWEST_COST_WITHOUT_CAP")
   local id
   id=$(_create_campaign "$payload" "test_camp_create_outcome_traffic")
+  CLEANUP_IDS+=("$id")
   _pass "test_camp_create_outcome_traffic (id=$id)"
 }
 
@@ -165,6 +189,7 @@ test_camp_create_outcome_engagement() {
   payload=$(_payload_abo "$name" "OUTCOME_ENGAGEMENT" "LOWEST_COST_WITHOUT_CAP")
   local id
   id=$(_create_campaign "$payload" "test_camp_create_outcome_engagement")
+  CLEANUP_IDS+=("$id")
   _pass "test_camp_create_outcome_engagement (id=$id)"
 }
 
@@ -175,6 +200,7 @@ test_camp_create_outcome_awareness() {
   payload=$(_payload_abo "$name" "OUTCOME_AWARENESS" "LOWEST_COST_WITHOUT_CAP")
   local id
   id=$(_create_campaign "$payload" "test_camp_create_outcome_awareness")
+  CLEANUP_IDS+=("$id")
   _pass "test_camp_create_outcome_awareness (id=$id)"
 }
 
@@ -197,6 +223,7 @@ test_camp_pause() {
   payload=$(_payload_abo "$name" "OUTCOME_TRAFFIC" "LOWEST_COST_WITHOUT_CAP")
   local id
   id=$(_create_campaign "$payload" "test_camp_pause")
+  CLEANUP_IDS+=("$id")
 
   graph_api POST "$id" '{"status":"ACTIVE"}' >/dev/null \
     || _fail "test_camp_pause" "activate falhou"
@@ -217,6 +244,7 @@ test_camp_activate() {
   payload=$(_payload_abo "$name" "OUTCOME_TRAFFIC" "LOWEST_COST_WITHOUT_CAP")
   local id
   id=$(_create_campaign "$payload" "test_camp_activate")
+  CLEANUP_IDS+=("$id")
 
   graph_api POST "$id" '{"status":"ACTIVE"}' >/dev/null \
     || _fail "test_camp_activate" "activate falhou"
@@ -236,6 +264,7 @@ test_camp_edit_budget() {
   payload=$(_payload_cbo "$name" "OUTCOME_SALES" "LOWEST_COST_WITHOUT_CAP" "$MIN_BUDGET_CENTS")
   local id
   id=$(_create_campaign "$payload" "test_camp_edit_budget")
+  CLEANUP_IDS+=("$id")
 
   local edit_payload
   edit_payload=$(jq -nc --argjson d "$new_budget" '{daily_budget:$d}')
@@ -256,13 +285,17 @@ test_camp_delete_paused() {
   payload=$(_payload_abo "$name" "OUTCOME_TRAFFIC" "LOWEST_COST_WITHOUT_CAP")
   local id
   id=$(_create_campaign "$payload" "test_camp_delete_paused")
+  CLEANUP_IDS+=("$id")
 
   _campanha_delete_guarded "$id" >/dev/null 2>&1 \
     || _fail "test_camp_delete_paused" "delete guarded falhou pra campanha PAUSED"
 
-  # Remove da cleanup list (já deletada)
+  # Remove da cleanup list (já deletada). Expansão guardada com
+  # "${CLEANUP_IDS[@]+...}" (mesmo idiom já usado abaixo pra $new):
+  # bash 3.2 dá "unbound variable" em "${arr[@]}" sob `set -u` quando o
+  # array tem ZERO elementos — achado ao vivo nesta função (T22).
   local i new=()
-  for i in "${CLEANUP_IDS[@]}"; do
+  for i in "${CLEANUP_IDS[@]+${CLEANUP_IDS[@]}}"; do
     [[ "$i" != "$id" ]] && new+=("$i")
   done
   CLEANUP_IDS=("${new[@]+${new[@]}}")
@@ -277,6 +310,7 @@ test_camp_delete_active_blocked() {
   payload=$(_payload_abo "$name" "OUTCOME_TRAFFIC" "LOWEST_COST_WITHOUT_CAP")
   local id
   id=$(_create_campaign "$payload" "test_camp_delete_active_blocked")
+  CLEANUP_IDS+=("$id")
 
   graph_api POST "$id" '{"status":"ACTIVE"}' >/dev/null \
     || _fail "test_camp_delete_active_blocked" "activate falhou"
@@ -306,6 +340,7 @@ test_camp_bid_strategy_min_roas() {
 
   local id
   id=$(_create_campaign "$payload" "test_camp_bid_strategy_min_roas")
+  CLEANUP_IDS+=("$id")
 
   local strategy
   strategy=$(graph_api GET "${id}?fields=bid_strategy" | jq -r '.bid_strategy')
