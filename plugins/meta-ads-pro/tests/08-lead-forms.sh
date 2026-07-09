@@ -45,8 +45,11 @@ _cleanup_forms() {
   source "$PLUGIN_ROOT/lib/graph_api.sh" 2>/dev/null || return 0
 
   local page_token
+  # `|| page_token=""` — sob `set -euo pipefail`, se o graph_api emitir stdout
+  # não-JSON numa falha, o jq quebra o pipeline e o errexit mataria o trap ANTES
+  # do warning e do loop de arquivamento; o guard degrada pro check de vazio abaixo.
   page_token=$(GRAPH_API_SKIP_RESOLVER=1 graph_api GET "${PAGE_ID}?fields=access_token" 2>/dev/null \
-    | jq -r '.access_token // empty')
+    | jq -r '.access_token // empty') || page_token=""
   if [[ -z "$page_token" ]]; then
     echo "⚠ _cleanup_forms: sem page token — forms de teste ficam ACTIVE (arquive manualmente)" >&2
     return 0
@@ -315,8 +318,10 @@ test_14_tracking_parameters_roundtrip() {
   local get_response
   get_response=$(graph_api GET "${fid}?fields=id,tracking_parameters") \
     || _fail "test_14_tracking_parameters_roundtrip" "GET pós-criação falhou"
-  echo "$get_response" | jq -e '.tracking_parameters | type == "array" and length > 0' >/dev/null \
-    || _fail "test_14_tracking_parameters_roundtrip" "tracking_parameters não voltou como array: $get_response"
+  # roundtrip de verdade: as CHAVES enviadas no objeto voltam no array [{key,value}]
+  echo "$get_response" | jq -e \
+    '[.tracking_parameters[].key] | contains(["utm_source","utm_medium","utm_campaign"])' >/dev/null \
+    || _fail "test_14_tracking_parameters_roundtrip" "chaves enviadas não voltaram no GET: $get_response"
   _pass "test_14_tracking_parameters_roundtrip (fid=$fid)"
 }
 
