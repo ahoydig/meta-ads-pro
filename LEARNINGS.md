@@ -362,3 +362,11 @@ confirmada ao vivo contra a Graph API real (`act_763408067802379`), não suposi�
 | 8 | `GET {page_id}/subscribed_apps` exige **page token**, não o token de system-user | Erro `190/2069032` ("É necessário um token de acesso à Página") | Derivar page token via `GET {page_id}?fields=access_token` antes de qualquer chamada a `subscribed_apps`/checagem de subscrição de `leadgen` |
 | 9 | A conta de teste é `development_access` tier — cabe **~2 rodadas de suíte live por dia** antes de estourar BUC | Confirmado ao vivo (BUC chegou a 177% numa rodada pesada, exigindo cooldown) | Espaçar rodadas completas de teste live entre tasks/tracks; não empilhar `run_all.sh` + várias suítes individuais no mesmo dia sem folga |
 | 10 | Events Manager (UI 2026, `eventsmanager.facebook.com`) **não tem mais** a lista clássica de "test events recebidos" | Procurado exaustivamente (abas Eventos de teste, Diagnóstico, Histórico, Visão geral) — a tela não existe mais na interface atual | Validar CAPI via `events_received` na própria resposta do `POST {pixel_id}/events` (confirmado `1` em 2 rodadas ao vivo) — não depender de inspeção visual do Events Manager |
+
+### Lição 11 (v1.1 pós-release, 2026-07-11) — Scopes reais da Private Integration do GHL
+
+**O que aprendi:** um PIT criado só com `contacts.readonly + contacts.write` NÃO passa no Check 1 do `/meta-ads-crm status` — `GET /locations/{id}` exige `locations.readonly` (401 "The token is not authorized for this scope", verificado ao vivo). E o PIT de **agência** não opera location nenhuma (mesmo 401 em contacts read/write da subconta — confirmado ao vivo, consistente com o gotcha "PIT-agência≠operar-subconta").
+
+**Por quê:** os scopes do GHL são por recurso, não hierárquicos; e Private Integrations de agência e de location são espaços distintos.
+
+**Como aplicar:** criar o PIT NA SUBCONTA com os 4 scopes documentados em `flows/crm/SKILL.md` (env). Na UI: o dropdown de scopes RESETA se você clicar fora — feche com Escape; e dá pra editar scopes depois sem regenerar o token (Editar → Atualizar).

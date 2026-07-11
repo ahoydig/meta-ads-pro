@@ -24,7 +24,14 @@ ponta-a-ponta com um lead sintético (`testar`). CAPI do funil (`capi-setup`/`ca
 ```bash
 GHL_LOCATION_ID=...        # subconta do cliente no GHL
 GHL_PIT_TOKEN=...          # Private Integration Token (Settings → Private Integrations
-                           # da subconta, scopes contacts.readonly + contacts.write)
+                           # da subconta). Scopes OBRIGATÓRIOS: contacts.readonly +
+                           # contacts.write + locations.readonly (o Check 1 do modo status
+                           # usa GET /locations/{id} — só contacts dá 401 "not authorized
+                           # for this scope", verificado ao vivo 2026-07-09) +
+                           # locations/customFields.readonly (modo mapear, Passo 3).
+                           # Gotcha da UI: no dropdown de scopes, clicar FORA reseta a
+                           # seleção — feche com Escape pra preservar. Dá pra EDITAR os
+                           # scopes depois sem regenerar o token (Editar → Atualizar).
 RECEIVER_HEALTH_URL=https://webhooks.ahoy.digital/meta-leads/health   # default
 ```
 
