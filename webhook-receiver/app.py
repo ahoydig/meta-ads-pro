@@ -1,5 +1,5 @@
 """Receiver de leadgen da Meta → GoHighLevel. Roda na VPS atrás do Cloudflare Tunnel."""
-import hashlib, hmac, json, os, time, urllib.request, urllib.parse
+import hashlib, hmac, json, os, re, time, urllib.request, urllib.parse
 from pathlib import Path
 from fastapi import FastAPI, Request, Response, HTTPException
 
@@ -38,10 +38,19 @@ def push_to_ghl(lead: dict, cfg: dict) -> None:
     # email/phone_number nesse mesmo array) — não existe um bloco extra de UTMs
     # separado no payload. Por isso cfg["custom_fields"] pode mapear direto de `fd`
     # (chave = nome do tracking_parameter no form, valor = ID do custom field no GHL).
+    # GHL contacts/upsert rejeita com 400 ("did not seem to be a phone number") se o
+    # valor não parecer telefone — confirmado ao vivo na T23 com o dado dummy que a
+    # Meta injeta em test_leads (ex.: "<test lead: dummy data for phone_number>").
+    # A integração nativa GHL↔Facebook lida com o mesmo dado dummy silenciosamente
+    # (contato criado com phone=null) — replicamos esse comportamento aqui em vez de
+    # deixar o push inteiro falhar (500 + retry infinito) por causa só do telefone.
+    _phone_raw = fd.get("phone_number") or ""
+    _phone_digits = re.sub(r"\D", "", _phone_raw)
+    phone = f"+{_phone_digits}" if len(_phone_digits) >= 8 else None
     body = {
         "locationId": cfg["location_id"],
         "name": fd.get("full_name"), "email": fd.get("email"),
-        "phone": fd.get("phone_number"),
+        "phone": phone,
         "source": "meta-leadform-webhook",
         "tags": ["meta-lead-ads"],
         # customFields: IDs reais por location, mapeados em cfg["custom_fields"]
@@ -54,8 +63,14 @@ def push_to_ghl(lead: dict, cfg: dict) -> None:
     req = urllib.request.Request(
         "https://services.leadconnectorhq.com/contacts/upsert",
         data=json.dumps({k: v for k, v in body.items() if v}).encode(),
+        # User-Agent explícito é OBRIGATÓRIO: o Cloudflare WAF da leadconnectorhq.com
+        # bloqueia com 403 (error code 1010) a assinatura padrão "Python-urllib/x.y"
+        # do urllib sem headers — confirmado ao vivo na T23 (curl e um UA descritivo
+        # passam, urllib puro não). Sem isso, TODO push real do receiver falha.
         headers={"Authorization": f"Bearer {token}", "Version": "2021-07-28",
-                 "Content-Type": "application/json"}, method="POST")
+                 "Content-Type": "application/json",
+                 "User-Agent": "meta-leads-receiver/1.0 (+meta-ads-pro webhook-receiver)"},
+        method="POST")
     with urllib.request.urlopen(req, timeout=15) as r:
         r.read()
 
