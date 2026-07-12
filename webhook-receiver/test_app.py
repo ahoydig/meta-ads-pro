@@ -128,3 +128,57 @@ def test_health():
     h = r.json()
     for key in ("received_total", "pushed", "errors", "no_config", "malformed"):
         assert key in h
+
+# --- push_to_ghl real (sem monkeypatch da própria função) ---------------------
+# Os testes acima monkeypatcham appmod.push_to_ghl inteiro, então nunca exercitam o
+# código real dela. Aqui mockamos só urllib.request.urlopen (a borda de rede) e
+# capturamos o Request de verdade montado por push_to_ghl, pra cobrir os 2 fixes
+# de produção (User-Agent contra o WAF do GHL; sanitização de telefone dummy).
+
+_CFG_TEST = {"location_id": "loc-test", "ghl_token_env": "GHL_TOKEN_TEST", "custom_fields": {}}
+
+def _lead(phone_value: str | None, name: str = "Maria", email: str = "m@x.com") -> dict:
+    fd = [{"name": "full_name", "values": [name]}, {"name": "email", "values": [email]}]
+    if phone_value is not None:
+        fd.append({"name": "phone_number", "values": [phone_value]})
+    return {"id": "L-push-test", "field_data": fd}
+
+class _FakeResponse:
+    def __enter__(self):
+        return self
+    def __exit__(self, *exc):
+        return False
+    def read(self):
+        return b"{}"
+
+def _capture_urlopen(monkeypatch):
+    captured = {}
+    def fake_urlopen(req, timeout=None):
+        captured["req"] = req
+        return _FakeResponse()
+    monkeypatch.setattr(appmod.urllib.request, "urlopen", fake_urlopen)
+    return captured
+
+def test_push_ghl_sets_user_agent(monkeypatch):
+    captured = _capture_urlopen(monkeypatch)
+    appmod.push_to_ghl(_lead("+5591999999999"), _CFG_TEST)
+    ua = captured["req"].get_header("User-agent")
+    assert ua is not None and "meta-leads-receiver" in ua
+
+def test_push_ghl_real_phone_intact(monkeypatch):
+    captured = _capture_urlopen(monkeypatch)
+    appmod.push_to_ghl(_lead("+5591988887777"), _CFG_TEST)
+    body = json.loads(captured["req"].data)
+    assert body["phone"] == "+5591988887777"
+
+def test_push_ghl_dummy_phone_dropped(monkeypatch):
+    captured = _capture_urlopen(monkeypatch)
+    appmod.push_to_ghl(_lead("<test lead: dummy data for phone_number>"), _CFG_TEST)
+    body = json.loads(captured["req"].data)
+    assert "phone" not in body
+
+def test_push_ghl_short_phone_dropped(monkeypatch):
+    captured = _capture_urlopen(monkeypatch)
+    appmod.push_to_ghl(_lead("1234"), _CFG_TEST)  # <8 dígitos
+    body = json.loads(captured["req"].data)
+    assert "phone" not in body

@@ -167,7 +167,8 @@ meta-leads.service` (`active` confirmado).
 ```
 health ANTES: {"received_total":0,"pushed":0,"errors":0, ...}
 health DEPOIS: {"received_total":3,"pushed":1,"errors":2,"last_status":"pushed", ...}
-```//
+```
+
 (`errors:2` são as 2 tentativas anteriores, ANTES dos fixes — esperado, não escondido.)
 
 Contato no GHL pós-push: `GET /contacts/?query=test@meta.com` → **1 único contato**
