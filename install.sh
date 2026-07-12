@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — meta-ads-pro installer v1.0.0
+# install.sh — meta-ads-pro installer v1.1.0
 #
 # Instala o plugin em ~/.claude/plugins/local/meta-ads-pro/ + registra em
 # ~/.claude/plugins/installed_plugins.json + habilita em ~/.claude/settings.json.
@@ -135,7 +135,7 @@ now = datetime.now(timezone.utc).isoformat().replace('+00:00','Z')
 d.setdefault('plugins', {})['meta-ads-pro@local'] = [{
     'scope': 'user',
     'installPath': install_path,
-    'version': '1.0.4',
+    'version': '1.1.0',
     'installedAt': now,
     'lastUpdated': now
 }]

@@ -232,6 +232,102 @@ test_nomenclatura_detect_underscore() {
   fi
 }
 
+# ─── lib/utm.sh: UTM builder (dynamic Meta + static lead-form) ─────────────
+test_utm_dynamic_clean_url() {
+  # shellcheck source=../lib/utm.sh
+  source "$(dirname "$0")/../lib/utm.sh"
+  local url
+  url=$(build_utm_url_dynamic "https://seusite.com/lp")
+  local expected="https://seusite.com/lp?utm_source={{site_source_name}}&utm_medium=trafego-pago&utm_campaign={{campaign.name}}&utm_term={{adset.name}}&utm_content={{ad.name}}"
+  if [[ "$url" == "$expected" ]]; then
+    _pass "test_utm_dynamic_clean_url"
+  else
+    _fail "test_utm_dynamic_clean_url" "got '$url'"; exit 1
+  fi
+}
+
+test_utm_dynamic_preserves_existing_query() {
+  # shellcheck source=../lib/utm.sh
+  source "$(dirname "$0")/../lib/utm.sh"
+  local url
+  url=$(build_utm_url_dynamic "https://seusite.com/lp?ref=ads&keep=1")
+  if [[ "$url" == "https://seusite.com/lp?ref=ads&keep=1&utm_source={{site_source_name}}&"* ]]; then
+    _pass "test_utm_dynamic_preserves_existing_query"
+  else
+    _fail "test_utm_dynamic_preserves_existing_query" "got '$url'"; exit 1
+  fi
+}
+
+test_utm_dynamic_strips_old_utm() {
+  # shellcheck source=../lib/utm.sh
+  source "$(dirname "$0")/../lib/utm.sh"
+  local url
+  url=$(build_utm_url_dynamic "https://seusite.com/lp?utm_source=old&keep=1&utm_medium=ads")
+  # tem que conter keep=1 e NÃO ter utm_source=old
+  if [[ "$url" == *"keep=1"* && "$url" != *"utm_source=old"* && "$url" == *"utm_source={{site_source_name}}"* ]]; then
+    _pass "test_utm_dynamic_strips_old_utm"
+  else
+    _fail "test_utm_dynamic_strips_old_utm" "got '$url'"; exit 1
+  fi
+}
+
+test_utm_static_basic() {
+  # shellcheck source=../lib/utm.sh
+  source "$(dirname "$0")/../lib/utm.sh"
+  local url
+  url=$(build_utm_url_static "https://seusite.com/obrigado" "20260424_form-clinica")
+  local expected="https://seusite.com/obrigado?utm_source=meta&utm_medium=trafego-pago&utm_campaign=20260424_form-clinica"
+  if [[ "$url" == "$expected" ]]; then
+    _pass "test_utm_static_basic"
+  else
+    _fail "test_utm_static_basic" "got '$url'"; exit 1
+  fi
+}
+
+test_utm_static_custom_source() {
+  # shellcheck source=../lib/utm.sh
+  source "$(dirname "$0")/../lib/utm.sh"
+  local url
+  url=$(build_utm_url_static "https://x.com/y" "20260424_camp" "meta-leadform" "trafego-pago")
+  if [[ "$url" == *"utm_source=meta-leadform"* ]]; then
+    _pass "test_utm_static_custom_source"
+  else
+    _fail "test_utm_static_custom_source" "got '$url'"; exit 1
+  fi
+}
+
+test_utm_slugify_strips_accents() {
+  # shellcheck source=../lib/utm.sh
+  source "$(dirname "$0")/../lib/utm.sh"
+  local s
+  s=$(slugify "Clínica Estética São Paulo")
+  if [[ "$s" == "clinica-estetica-sao-paulo" ]]; then
+    _pass "test_utm_slugify_strips_accents"
+  else
+    _fail "test_utm_slugify_strips_accents" "got '$s'"; exit 1
+  fi
+}
+
+test_utm_is_external_url_true_for_https() {
+  # shellcheck source=../lib/utm.sh
+  source "$(dirname "$0")/../lib/utm.sh"
+  if is_external_url "https://x.com" && is_external_url "http://y.com/z"; then
+    _pass "test_utm_is_external_url_true_for_https"
+  else
+    _fail "test_utm_is_external_url_true_for_https" "should accept http(s)"; exit 1
+  fi
+}
+
+test_utm_is_external_url_false_for_deeplinks() {
+  # shellcheck source=../lib/utm.sh
+  source "$(dirname "$0")/../lib/utm.sh"
+  if ! is_external_url "wa.me/55819999" && ! is_external_url "fb-messenger://user/123" && ! is_external_url "tel:+55"; then
+    _pass "test_utm_is_external_url_false_for_deeplinks"
+  else
+    _fail "test_utm_is_external_url_false_for_deeplinks" "should reject deeplinks"; exit 1
+  fi
+}
+
 # ─── Task 1.9: telemetria ──────────────────────────────────────────────────
 test_telemetry_log_writes_jsonl() {
   # shellcheck source=../lib/telemetry.sh
@@ -683,6 +779,14 @@ test_nomenclatura_enxuto
 test_nomenclatura_custom
 test_nomenclatura_detect_bracket
 test_nomenclatura_detect_underscore
+test_utm_dynamic_clean_url
+test_utm_dynamic_preserves_existing_query
+test_utm_dynamic_strips_old_utm
+test_utm_static_basic
+test_utm_static_custom_source
+test_utm_slugify_strips_accents
+test_utm_is_external_url_true_for_https
+test_utm_is_external_url_false_for_deeplinks
 test_telemetry_log_writes_jsonl
 test_telemetry_opt_out
 test_feature_flags_default

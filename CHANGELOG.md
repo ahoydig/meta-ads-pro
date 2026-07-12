@@ -5,6 +5,121 @@ versionamento [SemVer](https://semver.org/).
 
 ---
 
+## [v1.1.0] — 2026-07-09
+
+Feature release — pipeline de lead completo (CRM/GHL nativo + CAPI), boost de conteúdo
+orgânico do Instagram, criativo avançado (carrossel, crop/placement, preview oficial),
+exclusões de público, e hardening real da suíte de testes contra a conta ao vivo (regras
+novas de `bid_strategy`, cleanup robusto, lint estendido a `tests/*.sh`).
+
+### Added
+
+- **Upgrade auditado pra Graph API v25.0** — confirmado como versão mais recente
+  disponível, sem breaking change pendente pro plugin (`docs/spikes/2026-07-api-version.md`).
+- **Lead forms — `tracking_parameters`**: objeto no POST vira array `[{key,value}]` no
+  GET, propaga pro `field_data` de cada lead como campos próprios (não seção separada).
+  Obrigatório no fluxo de criação (Passo 8.5).
+- **Lead forms — 8 CTAs reais** de `thank_you_page.button_type` testados ao vivo:
+  `NONE`, `VIEW_WEBSITE`, `VIEW_ON_FACEBOOK`, `CALL_BUSINESS`, `DOWNLOAD`, `WHATSAPP`,
+  `PROMO_CODE`, `BOOK_ON_WEBSITE` (os nomes do brief original — `VIEW_URL`/`CALL`/
+  `MESSAGE` — não existem). `MESSAGE_BUSINESS` e `SCHEDULE_APPOINTMENT` continuam
+  rejeitados/dependem de integração pré-configurada.
+- **Lead forms — condicionais com estado real da API**: qualificar/desqualificar
+  suportado (thank-you dupla, já existia), dropdowns encadeados **parcial** (campo
+  `conditional_questions_group_id` é real, mas sem endpoint de criação público),
+  branching **não existe** como campo separado (erro explícito de API, plano B via
+  dropdown + `disqualified_thank_you_page`) — testes 10-15 novos cobrindo os três casos.
+- **Boost de post/Reel do Instagram** (`/meta-ads-boost`) — impulsiona conteúdo orgânico
+  já publicado sem criar dark post. Payload mínimo que funciona:
+  `{name, source_instagram_media_id}` **sozinho** (combinar com `object_story_spec`
+  quebra ou gera erro de ambiguidade). Ad set usa `destination_type: ON_POST` +
+  `optimization_goal: POST_ENGAGEMENT` + `bid_strategy` explícito. Checagem prévia de
+  elegibilidade via `boost_eligibility_info` (GET, sem custo de escrita) antes de
+  qualquer `POST /adcreatives`.
+- **Preview oficial da Meta** (`generatepreviews` / `{creative_id}/previews`) — iframe
+  real da Meta, gerado em HTML local; default no `/meta-ads-boost`, opcional em
+  `/meta-ads-anuncios`.
+- **`image_crops` aninhado** em `object_story_spec.link_data` (divergência real: o campo
+  top-level é aceito com `201` e **descartado em silêncio** pela API — só funciona
+  aninhado) + **`asset_customization_rules`** por placement via `adlabels`.
+- **Modo Carrossel** (`child_attachments`, 2–10 cartões) com UTM dinâmico por cartão.
+- **Exclusões de público** no targeting (`targeting.excluded_custom_audiences` /
+  `targeting.exclusions`), com pergunta padrão (default nenhuma) em `/meta-ads-conjuntos`.
+- **`saved_audiences` — capability gate confirmado ao vivo**: `POST` bloqueado pra este
+  app (`OAuthException code 3`, "Application does not have the capability..."), não é
+  problema de payload/versão. Flow documentado como somente leitura + criação guiada no
+  Ads Manager; guard-rail de teste vira FAIL automático se a Meta liberar a capability.
+- **Criação de pixel via API** — idempotente (reusa `TEST_meta-ads-pro_pixel` se já
+  existir, cria só com confirmação explícita) + oferta no `/meta-ads-setup`.
+- **`/meta-ads-news`** — checagem sob demanda do changelog da Marketing API contra a
+  versão em uso do plugin. Só WebFetch de doc pública; **zero chamada à Graph API**.
+- **`/meta-ads-doctor` com 14 checks** — 4 novos: GHL configurado, webhook receiver
+  saudável, subscrição da Página em `leadgen`, dataset CAPI ativo.
+- **Integração CRM/GHL nativa** (`/meta-ads-crm`) — modos `status`/`mapear`/`testar`
+  contra o GoHighLevel.
+- **Webhook receiver** (`webhook-receiver/`, FastAPI) — recebe evento de `leadgen`,
+  busca o lead completo via `{leadgen_id}?fields=field_data` e empurra pro GHL
+  (`POST /contacts/upsert`). Verificação de assinatura `X-Hub-Signature-256`
+  (constante-tempo), dedup por `leadgen_id`, retry semântico (resposta `500` em falha
+  transiente pra Meta reentregar), health com contadores por status. Deploy systemd +
+  `RUNBOOK.md` na VPS.
+- **CAPI (Conversions API)** — eventos server-side do funil (ex: `LeadQualificado`) via
+  `{pixel_id}/events`, `action_source: system_generated`. Setup guiado + teste validado
+  ao vivo com `test_event_code` (`events_received: 1`, rodado 2× contra o pixel real).
+
+### Fixed
+
+- **`bid_strategy` agora obrigatório/condicionado pela conta**: ad set ABO sem
+  `bid_strategy` explícito quebra com `100/2490487`; campanha ABO com `bid_strategy` mas
+  **sem** `daily_budget` quebra com `100/1885737` ("Esta campanha não tem orçamento.").
+  Regra aplicada: **bid_strategy acompanha o orçamento** — CBO manda os dois na
+  campanha, ABO manda os dois no ad set. Corrigido em `flows/campanha/SKILL.md` e
+  `flows/conjuntos/SKILL.md`.
+- **Suíte de testes hardening contra a conta ao vivo**: path stale (`skills/` →
+  `flows/`) no `00-regression-filipe.sh` que abortava `run_all.sh` no layer 0 desde
+  sempre; `cleanup.sh` agora **arquiva** leadgen forms (`status=ARCHIVED` via page
+  token) em vez de tentar `DELETE` (não suportado pela Graph API, `100/33`) e passou a
+  cobrir `adcreatives`/`customaudiences`; leak de subshell em `mk_campaign()` (o array
+  de cleanup nunca via as campanhas criadas — 8 órfãs confirmadas na conta) corrigido
+  movendo o append pro shell principal nos 28 call sites afetados (05 + 06); guards
+  `||` adicionados em toda chamada `graph_api`/`jq` sob `set -euo pipefail` que faltava
+  (evita o script inteiro abortar por uma rejeição isolada da API).
+- **`flows/conjuntos/SKILL.md` — guard de WhatsApp quebrado**: o campo
+  `connected_whatsapp_business_account` foi **removido pela API** (`(#100) Tried
+  accessing nonexisting field`, confirmado ao vivo na Task 22/T24) — guard trocado por
+  aviso explícito de verificação manual no Business Manager.
+- **`tests/01-lint.sh` estendido a `tests/*.sh`** (antes só cobria `lib/`, blind spot da
+  suíte) — 2 findings pré-existentes corrigidos pra fechar limpo (SC2155 em
+  `00-regression-filipe.sh`, SC2012 anotado em `20-criativo-avancado.sh`).
+
+### Known issues
+
+- **`tests/14` `test_integ_02` incompatível com a regra nova de `bid_strategy`** — a
+  assertiva presume `bid_strategy` aceito numa campanha ABO sem `daily_budget`, que a
+  conta agora rejeita (`100/1885737`). Não corrigido nesta release (exigiria mudar a
+  semântica do teste, ex.: virar CBO com orçamento); `_fail` do teste derruba o resto do
+  arquivo (testes 03–05 não rodam).
+- **`tests/06` tem 3 drifts de API pré-existentes** que `run_all.sh` completo ainda
+  encontra: `test_dayparting` (a API rejeita `daily_budget`+`day_parting` com mensagem
+  em **PT-BR**, e o matcher de skip grácil só reconhece o texto em inglês),
+  `test_frequency_cap` (`frequency_control_specs` agora só é aceito com
+  `optimization_goal=REACH`, o teste usa `LINK_CLICKS`), `test_adset_destination_messenger`
+  (rejeitado sob `OUTCOME_LEADS` — o helper compartilhado do arquivo usa o mesmo
+  objective pra todos os 5 destinos, sem mapear destino→objective). `run_all.sh`
+  completo para no layer da `06` por causa deles — documentado, não corrigido.
+- **`tests/06` `test_adset_destination_whatsapp` em SKIP permanente** — o teste ainda
+  consulta `connected_whatsapp_business_account`, o mesmo campo removido pela API que
+  motivou o fix do guard em `flows/conjuntos/SKILL.md`; sem substituto de leitura
+  conhecido, o SKIP fica até a Meta expor um campo equivalente (ou o teste ser
+  redesenhado pra validar o destino sem o guard).
+- **T23 (validação e2e ponta a ponta) pendente de 3 ações humanas**: rota pública do
+  tunnel Cloudflare pro webhook receiver (`webhooks.ahoy.digital/meta-leads`, painel
+  Cloudflare Zero Trust — gerenciado remotamente, sem config local editável), App
+  Secret do app Meta (exige reautenticação por senha no painel), Private Integration do
+  GHL na subconta de teste (token pendente).
+
+---
+
 ## [v1.0.6] — 2026-04-21
 
 Hotfix — detecção cross-plugin robusta.
@@ -305,4 +420,5 @@ symlinks legados `meta-ads-*`, ou versão antiga em `~/.claude/plugins/meta-ads-
 
 ## [Unreleased]
 
-_Nada pendente._
+Sem mudanças pendentes acima da v1.1.0. Dívidas conhecidas e follow-ups estão
+documentados na seção "Known issues" da v1.1.0 acima.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# graph_api.sh — wrapper curl pra Graph API v25.0
+# graph_api.sh — wrapper curl pra Graph API (versão via META_API_VERSION, default v25.0 —
+# ver docs/spikes/2026-07-api-version.md pra auditoria de versão)
 # Uso: graph_api GET "me?fields=name,id"
 #      graph_api POST "act_{id}/campaigns" '{"name":"...","objective":"..."}'
 #      graph_api DELETE "{object_id}"

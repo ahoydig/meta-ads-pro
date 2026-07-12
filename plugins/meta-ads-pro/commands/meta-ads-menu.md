@@ -47,23 +47,25 @@ Em seguida, imprima o menu principal BYTE-EXATO abaixo:
 
 ```
 ╔══════════════════════════════════════════════════════════════════╗
-║  🎯 Comandos disponíveis (v1.0.6)                                ║
+║  🎯 Comandos disponíveis (v1.1.0)                                ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
 ║  ⚙  SETUP & SAÚDE                                                ║
 ║     /meta-ads-setup ........ Config inicial do projeto (.env)    ║
-║     /meta-ads-doctor ....... Pre-flight (10 checks + --fix)      ║
+║     /meta-ads-doctor ....... Pre-flight (14 checks + --fix)      ║
 ║                                                                  ║
 ║  🚀 CRIAR                                                        ║
-║     /meta-ads-campanha ..... Nova campanha (5 objetivos)         ║
+║     /meta-ads-campanha ..... Nova campanha (6 objetivos)         ║
 ║     /meta-ads-conjuntos .... Ad sets (targeting, budget, data)   ║
-║     /meta-ads-anuncios ..... Anúncios (normal ou dinâmico)       ║
+║     /meta-ads-anuncios ..... Anúncios (normal/dinâmico/carrossel)║
 ║     /meta-ads-lead-forms ... Lead form (qualifier/disqualifier)  ║
+║     /meta-ads-boost ........ Impulsiona post/Reel do IG          ║
 ║                                                                  ║
 ║  📊 GERENCIAR                                                    ║
 ║     /meta-ads-publicos ..... Públicos customizados/lookalike     ║
 ║     /meta-ads-regras ....... Regras automatizadas                ║
 ║     /meta-ads-insights ..... Métricas + reports                  ║
+║     /meta-ads-crm .......... CRM/GHL — status/mapear/testar      ║
 ║                                                                  ║
 ║  🔄 IMPORT & ROLLBACK                                            ║
 ║     /meta-ads-import-existing ... GET-only da conta Meta         ║
@@ -72,6 +74,7 @@ Em seguida, imprima o menu principal BYTE-EXATO abaixo:
 ║  🛠  META                                                         ║
 ║     /meta-ads-update ............. Puxa nova versão do plugin    ║
 ║     /meta-ads-analyze-telemetry .. Relatório local de uso        ║
+║     /meta-ads-news ............... Changelog da Marketing API    ║
 ║                                                                  ║
 ║  🔗 INTEGRAÇÕES                                                  ║
 ║     /meta-ads-dna ................ Ponte com dna-operacional     ║
@@ -95,7 +98,7 @@ Imprimir as 4 boxes BYTE-EXATO abaixo:
 │                                                               │
 │  1. /meta-ads-setup   → valida token + descobre recursos      │
 │                         + salva .env e CLAUDE.md              │
-│  2. /meta-ads-doctor  → 10 checks de preflight                │
+│  2. /meta-ads-doctor  → 14 checks de preflight                │
 │  3. /meta-ads-menu    → volta pra cá, vê todos os comandos    │
 └───────────────────────────────────────────────────────────────┘
 
@@ -164,7 +167,7 @@ Imprimir BYTE-EXATO:
 
 Digite:  /meta-ads-doctor
 
-10 checks:
+14 checks:
   1. Token válido
   2. Expiração do token
   3. Scopes (ads_management, ads_read, business_management, leads_retrieval, pages_manage_ads)
@@ -175,6 +178,10 @@ Digite:  /meta-ads-doctor
   8. Pixel configurado
   9. CLAUDE.md válido
   10. Learnings pendentes
+  11. GHL configurado (CRM — opcional)
+  12. Webhook receiver saudável (opcional)
+  13. Página subscrita em leadgen
+  14. Dataset CAPI ativo
 
 Use --fix pra auto-recuperar o que for recuperável.
 ```

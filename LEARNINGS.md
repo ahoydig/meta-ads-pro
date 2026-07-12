@@ -1,7 +1,9 @@
 # LEARNINGS — meta-ads-pro
 
 Esse arquivo documenta decisões, bugs, fixes e trade-offs que emergiram durante o
-desenvolvimento. Atualizado a cada CP. Release final: **v1.0.0 — 2026-04-21**.
+desenvolvimento. Atualizado a cada CP. Release final: **v1.0.0 — 2026-04-21**;
+release seguinte: **v1.1.0 — 2026-07-09** (pipeline de lead completo + CRM/GHL + CAPI +
+criativo avançado — ver seção no fim do arquivo).
 
 ---
 
@@ -336,3 +338,35 @@ e5d94ce feat(lib): privacy-validator 3 camadas bilíngue + cache 24h
 - `CHANGELOG.md` com entry v1.0.0 detalhado (11 skills, 10 bugs fixados com subcode, upgrade path)
 - `LEARNINGS.md` final (este arquivo) — resumo dos 4 CPs, arquitetura consolidada, commits
 - Tag `v1.0.0` + GitHub Release (via `gh release create`)
+
+---
+
+## v1.1.0 — Operação Ahoy: lições da rodada (2026-07)
+
+Escopo da release: lead forms avançados (`tracking_parameters`, CTAs reais, condicionais
+com estado real), boost de post/Reel do Instagram, criativo avançado (carrossel,
+`image_crops`, `asset_customization_rules`, preview oficial), exclusões de público,
+integração CRM/GHL nativa com webhook receiver, CAPI, e hardening da suíte de testes
+contra a conta ao vivo. Lições abaixo não são deriváveis do código — cada uma foi
+confirmada ao vivo contra a Graph API real (`act_763408067802379`), não suposição.
+
+| # | Lição | Por quê | Como aplicar |
+|---|---|---|---|
+| 1 | `tracking_parameters` é objeto `{chave:valor}` no `POST`, mas volta `[{key,value}]` no `GET` | Confirmado ao vivo (spike lead-form avançado); propaga pro `field_data` de cada lead como campos **próprios**, não um bloco separado | Ao ler o round-trip, esperar array; ao mapear pro GHL/CAPI, extrair o UTM direto do `field_data`, não de uma seção "tracking" à parte |
+| 2 | `leadgen_forms` **não tem `DELETE`** na Graph API | Erro `100/33` reproduzido toda vez que tentado, com token de system-user ou page token | Cleanup é sempre `POST {form_id}?status=ARCHIVED`, e sempre com **page token** derivado via `GET {page_id}?fields=access_token` — o token de system-user do `.env` não serve pra essa chamada |
+| 3 | CTAs reais de `thank_you_page.button_type` têm nomes diferentes dos que pareciam óbvios | Nomes reais confirmados ao vivo: `VIEW_WEBSITE`, `CALL_BUSINESS`, `MESSAGE_BUSINESS` (não `VIEW_URL`/`CALL`/`MESSAGE`). `MESSAGE_BUSINESS` é rejeitado ("not yet supported for Thank You Page"); `SCHEDULE_APPOINTMENT` exige integração de agendamento pré-configurada | Nunca escrever nome de CTA de memória — usar a tabela testada (8 aceitos ao vivo, 2 rejeitados/dependentes) antes de montar o payload |
+| 4 | Creative de boost do Instagram só funciona **mínimo** | `{name, source_instagram_media_id}` sozinho cria o creative; combinar com `object_story_spec` quebra — campo ignorado em silêncio (erro genérico pedindo `link`) se o `object_story_spec` vier incompleto, ou erro explícito de ambiguidade (`100/1487929`) se vier completo | Nunca "completar" o payload de boost com campos de identidade (`page_id`/`instagram_user_id`) — o ad set usa `destination_type: ON_POST` + `optimization_goal: POST_ENGAGEMENT` + `bid_strategy` explícito; checar `boost_eligibility_info` (GET grátis) **antes** de qualquer `POST /adcreatives` |
+| 5 | `image_crops` só funciona **aninhado** em `object_story_spec.link_data` | Top-level é aceito com `201` e **descartado em silêncio** pela API — divergência que só um round-trip real (`POST`→`GET`) revela; o `POST` sozinho não avisa nada | Sempre validar campo novo de criativo com `GET` pós-criação — nunca confiar só no `201` do `POST` como prova de que o campo persistiu |
+| 6 | Regra da conta: **`bid_strategy` acompanha o orçamento** | CBO: os dois vão na campanha; ABO: os dois vão no ad set. Omitir gera `100/2490487` (ad set ABO sem `bid_strategy`) ou `100/1885737` (campanha ABO com `bid_strategy` mas sem `daily_budget`) | Decidir CBO vs ABO primeiro, depois aplicar a regra nos dois campos (budget + bid_strategy) juntos no mesmo nível — nunca um sem o outro |
+| 7 | `saved_audiences` write é bloqueado por **capability do app**, não por payload/versão | `POST` retorna `OAuthException code 3` ("Application does not have the capability...") com o mesmo shape de payload que funciona em `customaudiences` — não é token/escopo/versão | Nenhum doctor/setup deve assumir que a escrita de `saved_audiences` funciona; o guard-rail de teste vira `FAIL` automático se a Meta liberar a capability no futuro — sinal de mudança real, não silêncio |
+| 8 | `GET {page_id}/subscribed_apps` exige **page token**, não o token de system-user | Erro `190/2069032` ("É necessário um token de acesso à Página") | Derivar page token via `GET {page_id}?fields=access_token` antes de qualquer chamada a `subscribed_apps`/checagem de subscrição de `leadgen` |
+| 9 | A conta de teste é `development_access` tier — cabe **~2 rodadas de suíte live por dia** antes de estourar BUC | Confirmado ao vivo (BUC chegou a 177% numa rodada pesada, exigindo cooldown) | Espaçar rodadas completas de teste live entre tasks/tracks; não empilhar `run_all.sh` + várias suítes individuais no mesmo dia sem folga |
+| 10 | Events Manager (UI 2026, `eventsmanager.facebook.com`) **não tem mais** a lista clássica de "test events recebidos" | Procurado exaustivamente (abas Eventos de teste, Diagnóstico, Histórico, Visão geral) — a tela não existe mais na interface atual | Validar CAPI via `events_received` na própria resposta do `POST {pixel_id}/events` (confirmado `1` em 2 rodadas ao vivo) — não depender de inspeção visual do Events Manager |
+
+### Lição 11 (v1.1 pós-release, 2026-07-11) — Scopes reais da Private Integration do GHL
+
+**O que aprendi:** um PIT criado só com `contacts.readonly + contacts.write` NÃO passa no Check 1 do `/meta-ads-crm status` — `GET /locations/{id}` exige `locations.readonly` (401 "The token is not authorized for this scope", verificado ao vivo). E o PIT de **agência** não opera location nenhuma (mesmo 401 em contacts read/write da subconta — confirmado ao vivo, consistente com o gotcha "PIT-agência≠operar-subconta").
+
+**Por quê:** os scopes do GHL são por recurso, não hierárquicos; e Private Integrations de agência e de location são espaços distintos.
+
+**Como aplicar:** criar o PIT NA SUBCONTA com os 4 scopes documentados em `flows/crm/SKILL.md` (env). Na UI: o dropdown de scopes RESETA se você clicar fora — feche com Escape; e dá pra editar scopes depois sem regenerar o token (Editar → Atualizar).

@@ -47,7 +47,20 @@ check_pixel || true
 
 Se doctor passou, exporta flags:
 - `FALLBACK_DARK_POST` (bool) — usado por anuncios
-- `AD_ACCOUNT_ID`, `PAGE_ID`, `INSTAGRAM_USER_ID` — das envs do CLAUDE.md
+- `AD_ACCOUNT_ID`, `PAGE_ID`, `INSTAGRAM_USER_ID`, `PIXEL_ID` (quando presente) — das envs do CLAUDE.md
+
+Ponte CLAUDE.md → env do `PIXEL_ID` (cobre projeto antigo que tem o id só no
+CLAUDE.md, sem `PIXEL_ID` no `.env` — sem isso o check 14 do doctor avisaria
+⚠ pra sempre; projetos novos já recebem `PIXEL_ID` no `.env` pelo setup
+Passo 8):
+
+```bash
+# só busca no CLAUDE.md se ainda não veio do .env; ignora campo comentado
+if [[ -z "${PIXEL_ID:-}" ]]; then
+  pixel_md=$(grep -m1 '^pixel_id:' CLAUDE.md 2>/dev/null | cut -d':' -f2- | sed 's/#.*//' | xargs) || pixel_md=""
+  [[ -n "$pixel_md" ]] && export PIXEL_ID="$pixel_md" || true
+fi
+```
 
 ### Passo 3 — Acquire lockfile
 
@@ -88,10 +101,13 @@ Tabela de roteamento:
 | "listar campanhas", "ver campanhas ativas" | `campanha/` (modo listagem) |
 | "pausar", "ativar", "editar campanha X" | `campanha/` (modo edição) |
 | "criar form", "lead form", "formulário" | `lead-forms/` |
+| "impulsionar", "boost", "patrocinar post/reel", "turbinar publicação" | `boost/` |
 | "diagnosticar", "doctor", "o que tá errado" | `doctor/` |
 | "configurar", "setup", "trocar conta" | `setup/` |
 | "importar", "importar dados existentes" | `import-existing/` |
 | "rollback", "deletar run X" | `rollback` |
+| "crm/ghl/fluxihub/mapear lead/capi" | `crm/` |
+| "novidades da api/changelog/mudou algo na meta" | `news/` |
 
 **Em ambiguidade:** pergunta ao usuário antes de delegar.
 
@@ -154,6 +170,7 @@ Se [1] ou [2], chama `/meta-ads-doctor --review-learnings`.
 | Conjuntos | `/meta-ads-conjuntos` | Ad sets com 5 destinos |
 | Anúncios | `/meta-ads-anuncios` | Creatives Normal/Dinâmico + upload + geração copy |
 | Lead Forms | `/meta-ads-lead-forms` | Instant Forms CRUD |
+| Boost | `/meta-ads-boost` | Impulsionar post/Reel já publicado do IG (social proof preservado) |
 | Públicos | `/meta-ads-publicos` | Custom audiences + lookalikes |
 | Regras | `/meta-ads-regras` | Automated rules |
 | Insights | `/meta-ads-insights` | Relatórios de performance |
@@ -161,6 +178,8 @@ Se [1] ou [2], chama `/meta-ads-doctor --review-learnings`.
 | Rollback | `/meta-ads-rollback {run_id}` | Rollback manual |
 | Update | `/meta-ads-update` | git pull + ./install.sh |
 | Telemetry | `/meta-ads-analyze-telemetry` | Agrega eventos locais |
+| CRM | `/meta-ads-crm` | Integração GHL/FluxiHub — status/mapear/testar/CAPI do funil |
+| News | `/meta-ads-news` | Changelog da Marketing/Graph API vs versão em uso |
 
 ## Erros comuns — referência global
 

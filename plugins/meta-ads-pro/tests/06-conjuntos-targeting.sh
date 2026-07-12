@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/06-conjuntos-targeting.sh — 18 testes do skill conjuntos (Task 2b.2)
+# tests/06-conjuntos-targeting.sh — 19 testes do skill conjuntos (Task 2b.2 + Task 17)
 #
 # Cobertura:
 #   5 destinos:   SITE, LEAD_FORM, WHATSAPP, MESSENGER, CALL
@@ -8,6 +8,7 @@
 #   Targeting:    CEP geocode, raio custom, interesses, lookalike, broad,
 #                 advantage ON/OFF (bug #2) — ambos com GET back validando
 #                 persistência do advantage_audience
+#   Exclusões:    excluded_custom_audiences persiste via GET back (Task 17)
 #   Features:     reachestimate, dayparting, frequency_cap
 #   CRUD:         pause/activate, edit budget, delete-ACTIVE-blocked (skill guard)
 #
@@ -46,6 +47,8 @@ _assert_eq() {
 }
 
 # Gera payload de adset SEM promoted_object (usado por WEBSITE)
+# daily_budget: 600 — > min_daily_budget real (522), mesma folga dos payloads live
+# do arquivo (ver nota "daily_budget bump 518→600" antes da seção 5 DESTINOS).
 _mk_adset_payload_no_po() {
   local dt="$1" og="$2"
   jq -nc --arg dt "$dt" --arg og "$og" '{
@@ -55,7 +58,7 @@ _mk_adset_payload_no_po() {
     destination_type: $dt,
     optimization_goal: $og,
     billing_event: "IMPRESSIONS",
-    daily_budget: 518,
+    daily_budget: 600,
     targeting: {
       geo_locations: {countries: ["BR"]},
       targeting_automation: {advantage_audience: 0}
@@ -64,6 +67,7 @@ _mk_adset_payload_no_po() {
 }
 
 # Gera payload de adset COM promoted_object.page_id
+# daily_budget: 600 — > min_daily_budget real (522), mesma folga (ver nota acima).
 _mk_adset_payload_with_po_page() {
   local dt="$1" og="$2" page="$3"
   jq -nc --arg dt "$dt" --arg og "$og" --arg p "$page" '{
@@ -73,7 +77,7 @@ _mk_adset_payload_with_po_page() {
     destination_type: $dt,
     optimization_goal: $og,
     billing_event: "IMPRESSIONS",
-    daily_budget: 518,
+    daily_budget: 600,
     promoted_object: {page_id: $p},
     targeting: {
       geo_locations: {countries: ["BR"]},
@@ -181,16 +185,29 @@ fi
 # ── cleanup de objetos criados ────────────────────────────────────────────────
 CREATED_ADSETS=()
 CREATED_CAMPAIGNS=()
+CREATED_AUDIENCES=()
 
 cleanup() {
   local rc=$?
-  # Deleta ad sets primeiro (depende de campanhas), depois campanhas
+  # Deleta ad sets primeiro (depende de campanhas/audiences), depois campanhas,
+  # depois custom audiences (Task 17 — test_excluded_custom_audience)
+  #
+  # Expansões guardadas com "${arr[@]+...}" (achado ao vivo T22, mesma classe
+  # do bug de tests/05-campanha-crud.sh): bash 3.2 dá "unbound variable" em
+  # "${arr[@]}" sob `set -u` quando o array tem ZERO elementos — se algum dos
+  # 3 arrays ficar vazio (ex.: nenhum teste chegou a criar audience), o
+  # script morreria DENTRO do próprio trap de cleanup, o pior lugar possível
+  # pra isso acontecer (deixaria os outros 2 arrays sem limpar).
   local id
-  for id in "${CREATED_ADSETS[@]}"; do
+  for id in "${CREATED_ADSETS[@]+${CREATED_ADSETS[@]}}"; do
     [[ -n "$id" && "$id" != "null" ]] || continue
     graph_api DELETE "$id" >/dev/null 2>&1 || true
   done
-  for id in "${CREATED_CAMPAIGNS[@]}"; do
+  for id in "${CREATED_CAMPAIGNS[@]+${CREATED_CAMPAIGNS[@]}}"; do
+    [[ -n "$id" && "$id" != "null" ]] || continue
+    graph_api DELETE "$id" >/dev/null 2>&1 || true
+  done
+  for id in "${CREATED_AUDIENCES[@]+${CREATED_AUDIENCES[@]}}"; do
     [[ -n "$id" && "$id" != "null" ]] || continue
     graph_api DELETE "$id" >/dev/null 2>&1 || true
   done
@@ -199,6 +216,14 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # ── helper: cria campanha pai (PAUSED, OUTCOME_LEADS) ─────────────────────────
+# NOTA (leak de órfãos, achado T17/T22): mk_campaign roda dentro do subshell
+# de `camp=$(mk_campaign)` no caller — qualquer `CREATED_CAMPAIGNS+=(...)` feito
+# AQUI DENTRO só existe na cópia do array do subshell e desaparece quando ele
+# termina (bash 3.2, sem shared memory entre subshells). O array global do
+# script nunca via essas campanhas → elas nunca eram limpas no trap EXIT
+# (leak confirmado: 8 TEST_ADSET_CAMP_* órfãs na conta). Fix: mk_campaign só
+# ecoa o id; é responsabilidade do CALLER (todo call site abaixo) fazer
+# `CREATED_CAMPAIGNS+=("$camp")` no shell principal, fora do subshell.
 mk_campaign() {
   local name
   name="TEST_ADSET_CAMP_$(date +%s)_$$_$RANDOM"
@@ -217,7 +242,6 @@ mk_campaign() {
   }
   id=$(echo "$resp" | jq -r '.id // empty')
   [[ -n "$id" ]] || return 1
-  CREATED_CAMPAIGNS+=("$id")
   echo "$id"
 }
 
@@ -238,7 +262,8 @@ base_adset_payload() {
       destination_type: $dt,
       optimization_goal: $og,
       billing_event: "IMPRESSIONS",
-      daily_budget: 518,
+      daily_budget: 600,
+      bid_strategy: "LOWEST_COST_WITHOUT_CAP",
       targeting: {
         geo_locations: {countries: ["BR"]},
         targeting_automation: {advantage_audience: 0}
@@ -248,6 +273,11 @@ base_adset_payload() {
 }
 # Nota: bid_amount removido — campanha default (LOWEST_COST_WITHOUT_CAP) não
 # aceita bid_amount; só LOWEST_COST_WITH_BID_CAP / COST_CAP aceitam.
+# bid_strategy explícito (LOWEST_COST_WITHOUT_CAP) — a conta passou a exigir
+# esse campo em TODO ad set com budget próprio (100/2490487, achado T17/T22).
+# daily_budget bump 518→600: min_daily_budget real da conta subiu pra 522
+# (era 518 quando os testes foram escritos) — confirmado ao vivo via
+# GET {account}?fields=min_daily_budget durante o T22; 600 dá folga.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 5 DESTINOS
@@ -256,6 +286,7 @@ base_adset_payload() {
 # 1. SITE (WEBSITE + LINK_CLICKS)
 test_adset_destination_site() {
   local camp; camp=$(mk_campaign) || { _fail "test_adset_destination_site" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local payload; payload=$(base_adset_payload "TEST_ADSET_SITE_$$_$RANDOM" "$camp" "WEBSITE" "LINK_CLICKS")
   local resp id
   resp=$(graph_api POST "${AD_ACCOUNT_ID}/adsets" "$payload" 2>&1) || { _fail "test_adset_destination_site" "$resp"; return; }
@@ -271,6 +302,7 @@ test_adset_destination_site() {
 # 2. LEAD_FORM (ON_AD + LEAD_GENERATION)
 test_adset_destination_lead_form() {
   local camp; camp=$(mk_campaign) || { _fail "test_adset_destination_lead_form" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local po; po=$(jq -nc --arg p "$PAGE_ID" '{page_id:$p}')
   local payload; payload=$(base_adset_payload "TEST_ADSET_LEADFORM_$$_$RANDOM" "$camp" "ON_AD" "LEAD_GENERATION" "$po")
   local resp id
@@ -297,6 +329,7 @@ test_adset_destination_whatsapp() {
   fi
 
   local camp; camp=$(mk_campaign) || { _fail "test_adset_destination_whatsapp" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local po; po=$(jq -nc --arg p "$PAGE_ID" '{page_id:$p}')
   local payload; payload=$(base_adset_payload "TEST_ADSET_WHATSAPP_$$_$RANDOM" "$camp" "WHATSAPP" "CONVERSATIONS" "$po")
   local resp id dt_back
@@ -321,6 +354,7 @@ test_adset_destination_whatsapp() {
 # 4. MESSENGER
 test_adset_destination_messenger() {
   local camp; camp=$(mk_campaign) || { _fail "test_adset_destination_messenger" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local po; po=$(jq -nc --arg p "$PAGE_ID" '{page_id:$p}')
   local payload; payload=$(base_adset_payload "TEST_ADSET_MESSENGER_$$_$RANDOM" "$camp" "MESSENGER" "CONVERSATIONS" "$po")
   local resp id dt_back
@@ -345,11 +379,18 @@ test_adset_destination_messenger() {
 # 5. PHONE_CALL
 test_adset_destination_call() {
   local camp; camp=$(mk_campaign) || { _fail "test_adset_destination_call" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local po; po=$(jq -nc --arg p "$PAGE_ID" '{page_id:$p}')
   # QUALITY_CALL pode não estar disponível em toda conta — fallback pra LINK_CLICKS como smoke test do destination_type
   local payload; payload=$(base_adset_payload "TEST_ADSET_CALL_$$_$RANDOM" "$camp" "PHONE_CALL" "QUALITY_CALL" "$po")
   local resp id
-  resp=$(graph_api POST "${AD_ACCOUNT_ID}/adsets" "$payload" 2>&1)
+  # `|| true` obrigatório: sob `set -e` (topo do arquivo), uma atribuição via
+  # command substitution que falha (POST rejeitado, ex. QUALITY_CALL
+  # indisponível) aborta o script INTEIRO em vez de deixar este teste tratar
+  # o erro sozinho (achado T17/T22) — os irmãos (test_adset_destination_site
+  # etc.) têm guard `|| { _fail ...; return; }`; este precisa só continuar
+  # pro branch de SKIP/fail abaixo, que já decide com base no conteúdo de $resp.
+  resp=$(graph_api POST "${AD_ACCOUNT_ID}/adsets" "$payload" 2>&1) || true
   id=$(echo "$resp" | jq -r '.id // empty')
   if [[ -n "$id" ]]; then
     CREATED_ADSETS+=("$id")
@@ -375,8 +416,16 @@ test_geocode_cep() {
   local cep="66055190"
   local viacep
   viacep=$(curl -sS --max-time 10 "https://viacep.com.br/ws/${cep}/json/" 2>/dev/null || echo "")
-  if [[ -z "$viacep" ]] || echo "$viacep" | jq -e '.erro' >/dev/null 2>&1; then
-    _skip "test_geocode_cep" "ViaCEP offline ou CEP inválido"
+  # Guard extra (achado ao vivo no T22): ViaCEP às vezes devolve um corpo que
+  # NÃO é JSON válido (ex.: stub de schema com chaves sem aspas) — sem
+  # validar isso aqui, o `jq -r` da linha de baixo falha sob `set -o
+  # pipefail`, e como é uma atribuição simples (fora de if/while), `set -e`
+  # aborta o SCRIPT INTEIRO em vez de só pular este teste. Terceiro serviço,
+  # não é bug do meta-ads-pro — trata como offline/indisponível (mesma
+  # filosofia do fallback do Nominatim logo abaixo).
+  if [[ -z "$viacep" ]] || ! echo "$viacep" | jq -e . >/dev/null 2>&1 \
+    || echo "$viacep" | jq -e '.erro' >/dev/null 2>&1; then
+    _skip "test_geocode_cep" "ViaCEP offline, formato inesperado, ou CEP inválido"
     return
   fi
   local city
@@ -395,9 +444,16 @@ test_geocode_cep() {
     --data-urlencode "countrycodes=br" \
     "https://nominatim.openstreetmap.org/search" 2>/dev/null || echo "[]")
   sleep 1
-  local lat lng
-  lat=$(echo "$geo" | jq -r '.[0].lat // empty')
-  lng=$(echo "$geo" | jq -r '.[0].lon // empty')
+  local lat="" lng=""
+  # Mesmo guard do ViaCEP acima (achado T22): Nominatim, sob rate limit ou
+  # bloqueio de IP por excesso de hits automatizados (esta suíte bate nele
+  # repetidas vezes em execuções sucessivas), pode devolver HTML/erro em vez
+  # de JSON — sem validar antes do jq, a atribuição abaixo abortaria o script
+  # inteiro sob `set -e`. Terceiro serviço, mesma filosofia do skip abaixo.
+  if echo "$geo" | jq -e . >/dev/null 2>&1; then
+    lat=$(echo "$geo" | jq -r '.[0].lat // empty')
+    lng=$(echo "$geo" | jq -r '.[0].lon // empty')
+  fi
   if [[ -n "$lat" && -n "$lng" ]]; then
     _pass "test_geocode_cep (${city}: $lat,$lng)"
   else
@@ -408,12 +464,13 @@ test_geocode_cep() {
 # 7. Targeting com raio custom_locations
 test_targeting_custom_locations_radius() {
   local camp; camp=$(mk_campaign) || { _fail "test_targeting_custom_locations_radius" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local name="TEST_ADSET_GEO_$$_$RANDOM"
   local payload
   payload=$(jq -nc --arg n "$name" --arg c "$camp" '{
     name: $n, campaign_id: $c, status: "PAUSED",
     destination_type: "WEBSITE", optimization_goal: "LINK_CLICKS",
-    billing_event: "IMPRESSIONS", daily_budget: 518,
+    billing_event: "IMPRESSIONS", daily_budget: 600, bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     targeting: {
       geo_locations: {
         custom_locations: [{
@@ -440,6 +497,7 @@ test_targeting_custom_locations_radius() {
 # 8. Targeting por interesses (flexible_spec)
 test_targeting_interests() {
   local camp; camp=$(mk_campaign) || { _fail "test_targeting_interests" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local name="TEST_ADSET_INT_$$_$RANDOM"
   # Busca interesse real
   local int_id int_name
@@ -455,7 +513,7 @@ test_targeting_interests() {
   payload=$(jq -nc --arg n "$name" --arg c "$camp" --arg iid "$int_id" --arg iname "$int_name" '{
     name: $n, campaign_id: $c, status: "PAUSED",
     destination_type: "WEBSITE", optimization_goal: "LINK_CLICKS",
-    billing_event: "IMPRESSIONS", daily_budget: 518,
+    billing_event: "IMPRESSIONS", daily_budget: 600, bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     targeting: {
       geo_locations: {countries: ["BR"]},
       flexible_spec: [{interests: [{id: $iid, name: $iname}]}],
@@ -484,12 +542,13 @@ test_targeting_lookalike() {
     return
   fi
   local camp; camp=$(mk_campaign) || { _fail "test_targeting_lookalike" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local name="TEST_ADSET_LAL_$$_$RANDOM"
   local payload
   payload=$(jq -nc --arg n "$name" --arg c "$camp" --arg aud "$aud_id" '{
     name: $n, campaign_id: $c, status: "PAUSED",
     destination_type: "WEBSITE", optimization_goal: "LINK_CLICKS",
-    billing_event: "IMPRESSIONS", daily_budget: 518,
+    billing_event: "IMPRESSIONS", daily_budget: 600, bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     targeting: {
       geo_locations: {countries: ["BR"]},
       custom_audiences: [{id: $aud}],
@@ -510,6 +569,7 @@ test_targeting_lookalike() {
 # 10. Targeting broad (sem flexible_spec / custom_audiences)
 test_targeting_broad() {
   local camp; camp=$(mk_campaign) || { _fail "test_targeting_broad" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local name="TEST_ADSET_BROAD_$$_$RANDOM"
   local payload; payload=$(base_adset_payload "$name" "$camp" "WEBSITE" "LINK_CLICKS")
   local resp id
@@ -526,6 +586,7 @@ test_targeting_broad() {
 # 11. advantage_audience ON (=1) vs 12. OFF (=0)
 test_advantage_audience_off() {
   local camp; camp=$(mk_campaign) || { _fail "test_advantage_audience_off" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local payload; payload=$(base_adset_payload "TEST_ADSET_AA_OFF_$$_$RANDOM" "$camp" "WEBSITE" "LINK_CLICKS")
   local resp id
   resp=$(graph_api POST "${AD_ACCOUNT_ID}/adsets" "$payload" 2>&1) || { _fail "test_advantage_audience_off" "$resp"; return; }
@@ -545,12 +606,13 @@ test_advantage_audience_off() {
 
 test_advantage_audience_on() {
   local camp; camp=$(mk_campaign) || { _fail "test_advantage_audience_on" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local name="TEST_ADSET_AA_ON_$$_$RANDOM"
   local payload
   payload=$(jq -nc --arg n "$name" --arg c "$camp" '{
     name: $n, campaign_id: $c, status: "PAUSED",
     destination_type: "WEBSITE", optimization_goal: "LINK_CLICKS",
-    billing_event: "IMPRESSIONS", daily_budget: 518,
+    billing_event: "IMPRESSIONS", daily_budget: 600, bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     targeting: {
       geo_locations: {countries: ["BR"]},
       targeting_automation: {advantage_audience: 1}
@@ -573,11 +635,69 @@ test_advantage_audience_on() {
   fi
 }
 
+# 13. Exclusão de público (excluded_custom_audiences) — Task 17, Track C
+# Caso de uso âncora: excluir leads-crm-180d (já é paciente/lead) das
+# campanhas de captação. Cria uma custom audience mínima (subtype CUSTOM),
+# usa como exclusão num ad set WEBSITE/LINK_CLICKS (mesmo idiom de
+# test_targeting_broad — sem promoted_object, sem depender de PAGE_ID) e
+# valida via GET back que excluded_custom_audiences persistiu.
+test_excluded_custom_audience() {
+  local aud_payload aud_resp aud
+  aud_payload=$(jq -nc '{
+    name: "TEST_AUD_EXCL_'"$$"'_'"$RANDOM"'",
+    subtype: "CUSTOM",
+    description: "teste exclusão de público (Task 17)",
+    customer_file_source: "USER_PROVIDED_ONLY"
+  }')
+  aud_resp=$(graph_api POST "${AD_ACCOUNT_ID}/customaudiences" "$aud_payload" 2>&1) || {
+    _fail "test_excluded_custom_audience" "customaudiences POST: $aud_resp"; return
+  }
+  aud=$(echo "$aud_resp" | jq -r '.id // empty')
+  [[ -n "$aud" ]] || { _fail "test_excluded_custom_audience" "sem id de audience: $aud_resp"; return; }
+  CREATED_AUDIENCES+=("$aud")
+
+  local camp; camp=$(mk_campaign) || { _fail "test_excluded_custom_audience" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
+  local name="TEST_ADSET_EXCL_$$_$RANDOM"
+  local payload
+  # daily_budget 1000 + bid_strategy explícito: a conta rejeitava o fixture
+  # padrão (518 + bid_strategy implícito) com 100/2490487 "valor/restrição de
+  # lance obrigatórios" (achado T17). Fixado no T22: base_adset_payload e os
+  # demais builders de ad set deste arquivo agora também mandam bid_strategy
+  # + daily_budget:600 (acima do min_daily_budget real de 522) — este teste
+  # segue com 1000 por já estar assim e não precisar de mudança.
+  payload=$(jq -nc --arg n "$name" --arg c "$camp" --arg aud "$aud" '{
+    name: $n, campaign_id: $c, status: "PAUSED",
+    destination_type: "WEBSITE", optimization_goal: "LINK_CLICKS",
+    billing_event: "IMPRESSIONS", daily_budget: 1000,
+    bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+    targeting: {
+      geo_locations: {countries: ["BR"]},
+      excluded_custom_audiences: [{id: $aud}],
+      targeting_automation: {advantage_audience: 0}
+    }
+  }')
+  local resp id
+  resp=$(graph_api POST "${AD_ACCOUNT_ID}/adsets" "$payload" 2>&1) || { _fail "test_excluded_custom_audience" "$resp"; return; }
+  id=$(echo "$resp" | jq -r '.id // empty')
+  [[ -n "$id" ]] || { _fail "test_excluded_custom_audience" "sem id: $resp"; return; }
+  CREATED_ADSETS+=("$id")
+
+  local back excl_id
+  back=$(graph_api GET "${id}?fields=targeting") || { _fail "test_excluded_custom_audience" "GET back falhou"; return; }
+  excl_id=$(echo "$back" | jq -r '.targeting.excluded_custom_audiences[0].id // empty')
+  if [[ "$excl_id" == "$aud" ]]; then
+    _pass "test_excluded_custom_audience ($id, excluded_custom_audiences=$aud)"
+  else
+    _fail "test_excluded_custom_audience" "exclusão não persistiu: $back"
+  fi
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # FEATURES
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 13. Reach estimate
+# 14. Reach estimate
 test_reach_estimate() {
   local targeting
   targeting=$(jq -nc '{
@@ -599,9 +719,10 @@ test_reach_estimate() {
   fi
 }
 
-# 14. Dayparting (adset_schedule + pacing_type)
+# 15. Dayparting (adset_schedule + pacing_type)
 test_dayparting() {
   local camp; camp=$(mk_campaign) || { _fail "test_dayparting" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local name="TEST_ADSET_DAYPART_$$_$RANDOM"
   # Campanha precisa ter lifetime_budget pra aceitar dayparting em muitos casos;
   # como workaround, aceitamos rejeição graciosa se conta não permite.
@@ -609,7 +730,7 @@ test_dayparting() {
   payload=$(jq -nc --arg n "$name" --arg c "$camp" '{
     name: $n, campaign_id: $c, status: "PAUSED",
     destination_type: "WEBSITE", optimization_goal: "LINK_CLICKS",
-    billing_event: "IMPRESSIONS", daily_budget: 518,
+    billing_event: "IMPRESSIONS", daily_budget: 600, bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     pacing_type: ["day_parting"],
     adset_schedule: [
       {start_minute: 480, end_minute: 1200, days: [1,2,3,4,5], timezone_type: "USER"}
@@ -620,8 +741,18 @@ test_dayparting() {
     }
   }')
   local resp id
-  resp=$(graph_api POST "${AD_ACCOUNT_ID}/adsets" "$payload" 2>&1)
-  id=$(echo "$resp" | jq -r '.id // empty')
+  # `|| true` obrigatório (mesmo achado do test_adset_destination_call, item
+  # #4 do T22): sem guard, sob `set -e`, uma rejeição da API (ex.: exige
+  # lifetime_budget pra dayparting, comentário acima) aborta o SCRIPT INTEIRO
+  # em vez de deixar o branch de SKIP/fail abaixo tratar sozinho.
+  resp=$(graph_api POST "${AD_ACCOUNT_ID}/adsets" "$payload" 2>&1) || true
+  # `2>/dev/null || id=""` — se a rejeição passou pelo error-resolver, $resp
+  # pode vir com diagnóstico ("⚙ ...") misturado ao JSON (stderr capturado
+  # via 2>&1 acima); nesse caso o jq falha em parsear, e sem esse fallback a
+  # atribuição abortaria o script sob `set -e` (mesma classe de bug do
+  # test_bug_01/02 em tests/00, achado T22). O grep abaixo não usa jq, então
+  # segue funcionando igual mesmo com $resp "sujo".
+  id=$(echo "$resp" | jq -r '.id // empty' 2>/dev/null) || id=""
   if [[ -n "$id" ]]; then
     CREATED_ADSETS+=("$id")
     _pass "test_dayparting ($id, seg-sex 08h-20h)"
@@ -636,15 +767,16 @@ test_dayparting() {
   fi
 }
 
-# 15. Frequency cap (frequency_control_specs)
+# 16. Frequency cap (frequency_control_specs)
 test_frequency_cap() {
   local camp; camp=$(mk_campaign) || { _fail "test_frequency_cap" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local name="TEST_ADSET_FREQ_$$_$RANDOM"
   local payload
   payload=$(jq -nc --arg n "$name" --arg c "$camp" '{
     name: $n, campaign_id: $c, status: "PAUSED",
     destination_type: "WEBSITE", optimization_goal: "LINK_CLICKS",
-    billing_event: "IMPRESSIONS", daily_budget: 518,
+    billing_event: "IMPRESSIONS", daily_budget: 600, bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     frequency_control_specs: [
       {event: "IMPRESSIONS", interval_days: 7, max_frequency: 3}
     ],
@@ -668,9 +800,10 @@ test_frequency_cap() {
 # CRUD (espelha 05-campanha-crud.sh — pause/activate, edit, delete guard)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 16. pause + activate
+# 17. pause + activate
 test_adset_pause_activate() {
   local camp; camp=$(mk_campaign) || { _fail "test_adset_pause_activate" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local payload; payload=$(base_adset_payload "TEST_ADSET_PAUSE_$$_$RANDOM" "$camp" "WEBSITE" "LINK_CLICKS")
   local resp id
   resp=$(graph_api POST "${AD_ACCOUNT_ID}/adsets" "$payload" 2>&1) || { _fail "test_adset_pause_activate" "$resp"; return; }
@@ -699,9 +832,10 @@ test_adset_pause_activate() {
   fi
 }
 
-# 17. edit budget (valida persistência do novo daily_budget)
+# 18. edit budget (valida persistência do novo daily_budget)
 test_adset_edit_budget() {
   local camp; camp=$(mk_campaign) || { _fail "test_adset_edit_budget" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local payload; payload=$(base_adset_payload "TEST_ADSET_EDIT_$$_$RANDOM" "$camp" "WEBSITE" "LINK_CLICKS")
   local resp id
   resp=$(graph_api POST "${AD_ACCOUNT_ID}/adsets" "$payload" 2>&1) || { _fail "test_adset_edit_budget" "$resp"; return; }
@@ -709,7 +843,7 @@ test_adset_edit_budget() {
   [[ -n "$id" ]] || { _fail "test_adset_edit_budget" "sem id"; return; }
   CREATED_ADSETS+=("$id")
 
-  # Edit daily_budget: 518 → 1000 (ambos acima do min_daily_budget 518)
+  # Edit daily_budget: 600 → 1000 (ambos acima do min_daily_budget real 522)
   local edit_resp back budget
   edit_resp=$(graph_api POST "$id" '{"daily_budget":1000}' 2>&1) || { _fail "test_adset_edit_budget" "edit: $edit_resp"; return; }
   back=$(graph_api GET "${id}?fields=daily_budget") || { _fail "test_adset_edit_budget" "GET back falhou"; return; }
@@ -721,12 +855,13 @@ test_adset_edit_budget() {
   fi
 }
 
-# 18. delete ACTIVE bloqueado pela skill (guard no skill/conjuntos/SKILL.md)
+# 19. delete ACTIVE bloqueado pela skill (guard no skill/conjuntos/SKILL.md)
 # Meta API aceita DELETE em ACTIVE, mas a skill deve bloquear antes.
 # Esse teste espelha a regra — chamamos a API direto como smoke, mas a
 # validação real é que a skill implementa o guard (documentado na SKILL.md).
 test_adset_delete_active_blocked() {
   local camp; camp=$(mk_campaign) || { _fail "test_adset_delete_active_blocked" "mk_campaign"; return; }
+  CREATED_CAMPAIGNS+=("$camp")
   local payload; payload=$(base_adset_payload "TEST_ADSET_DELACT_$$_$RANDOM" "$camp" "WEBSITE" "LINK_CLICKS")
   local resp id
   resp=$(graph_api POST "${AD_ACCOUNT_ID}/adsets" "$payload" 2>&1) || { _fail "test_adset_delete_active_blocked" "$resp"; return; }
@@ -772,6 +907,7 @@ for t in \
   test_targeting_broad \
   test_advantage_audience_off \
   test_advantage_audience_on \
+  test_excluded_custom_audience \
   test_reach_estimate \
   test_dayparting \
   test_frequency_cap \

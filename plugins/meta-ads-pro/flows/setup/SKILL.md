@@ -13,7 +13,7 @@ Configuração inicial do sistema Meta Ads. Executa uma vez por projeto.
 2. App Meta com acesso à Marketing API
 3. Scopes obrigatórios: `ads_management`, `ads_read`, `business_management`, `instagram_basic`, `leads_retrieval`, `pages_manage_ads`
 
-## Fluxo de execução (11 passos)
+## Fluxo de execução (11 passos + Passo 8.5 opcional)
 
 ### Passo 1 — Check .env
 
@@ -135,6 +135,108 @@ graph_api GET "${account_id}/connected_instagram_accounts?fields=username,id,fol
 
 Se múltiplos resultados por categoria → pergunta qual é principal.
 
+**Se `adspixels` retornar 0 pixels:**
+
+> Nenhum pixel encontrado nesta conta. Sem pixel, públicos de tipo Website
+> (visitantes do site, eventos como Lead/Purchase) não podem ser criados.
+>
+> Criar pixel agora? [s/N]
+
+- `N` (default) → segue o setup sem pixel; `pixel_id` fica comentado no
+  CLAUDE.md (Passo 11).
+- `s` → pede um nome (sugestão: nome do projeto/cliente, ex. `<nome-do-cliente>`),
+  confirma (ação **permanente** — pixel não tem DELETE na API, ver
+  `flows/publicos/SKILL.md` seção 1.1) e cria:
+
+  ```bash
+  payload=$(jq -nc --arg n "$PIXEL_NAME" '{name:$n}')
+  pixel_id=$(graph_api POST "act_${account_id#act_}/adspixels" "$payload" | jq -r .id)
+  ```
+
+  Salva `pixel_id` no CLAUDE.md (Passo 11, campo não fica mais comentado) e
+  mostra o `code` de instalação (`GET {pixel_id}?fields=code`) pro usuário
+  colar no site.
+
+**Em ambos os casos com pixel (descoberto no `adspixels` OU criado agora):**
+além do CLAUDE.md (Passo 11), gravar o id escolhido no `.env` — é daí que o
+doctor lê `PIXEL_ID` pro check 14 (`check_capi_dataset`). Mesmo padrão
+.gitignore-first do Passo 5, idempotente pra re-run do setup:
+
+```bash
+# 1. .gitignore antes de qualquer write (idempotente — já deve estar lá do Passo 5)
+touch .gitignore
+grep -qxF '.env' .gitignore || echo '.env' >> .gitignore
+
+# 2. Grava/atualiza PIXEL_ID no .env
+if grep -q '^PIXEL_ID=' .env 2>/dev/null; then
+  sed -i.bak "s|^PIXEL_ID=.*|PIXEL_ID=${pixel_id}|" .env && rm -f .env.bak
+else
+  echo "PIXEL_ID=${pixel_id}" >> .env
+fi
+
+# 3. Carrega na sessão
+export PIXEL_ID=$(grep '^PIXEL_ID=' .env | cut -d'=' -f2-)
+```
+
+Se a conta seguiu **sem** pixel (usuário respondeu `N`), nada é gravado no
+`.env` — o check 14 vai avisar ⚠ (não bloqueia) até um pixel existir.
+
+### Passo 8.5 — Integração opcional com GHL/FluxiHub
+
+Pergunta obrigatória de degrau (S/n) — mesmo padrão do Passo 10:
+
+```
+Integra com GHL/FluxiHub? [s/N]
+```
+
+- `N` (default) → segue o setup sem CRM. `GHL_LOCATION_ID`/`GHL_PIT_TOKEN` não
+  são gravados; `check_ghl`/`check_receiver` (doctor, checks 11/12) vão avisar
+  ⚠ (não bloqueiam) enquanto não configurados.
+- `s` → coleta os 3 valores, um de cada vez:
+
+  1. **`GHL_LOCATION_ID`** — ID da subconta (location) no GHL/FluxiHub que vai
+     receber os leads. Encontrado na URL do painel da subconta
+     (`app.<domínio>/location/<GHL_LOCATION_ID>/...`) ou em Configurações →
+     Informações da empresa.
+  2. **`GHL_PIT_TOKEN`** — Private Integration Token gerado **dentro da própria
+     subconta** (não é o token de agência/API key global):
+     > 1. Na subconta (location) → Configurações → Private Integrations
+     > 2. Criar Integração Privada → nome (ex: `meta-ads-pro`)
+     > 3. Marque os scopes de leitura/escrita de contatos necessários pro fluxo
+     >    de leads (ex: `contacts.readonly`, `contacts.write`)
+     > 4. Gerar → COPIE AGORA (não vai ver de novo) → cole aqui
+  3. **`RECEIVER_HEALTH_URL`** — URL de health check do receiver de leadgen
+     (webhook que recebe os leads do Meta e injeta no GHL). Default sugerido,
+     aceita Enter pra usar como está:
+     `https://webhooks.ahoy.digital/meta-leads/health`
+
+  Grava os 3 no `.env`, com o **mesmo padrão .gitignore-first do Passo 5**
+  (`.gitignore` checado/atualizado ANTES de qualquer write):
+
+  ```bash
+  # 1. .gitignore antes de qualquer write (idempotente — já deve estar lá do Passo 5)
+  touch .gitignore
+  grep -qxF '.env' .gitignore || echo '.env' >> .gitignore
+
+  # 2. Escreve .env (heredoc com 'EOF' pra não interpolar)
+  cat >> .env <<'EOF'
+  GHL_LOCATION_ID=COLE_LOCATION_ID_AQUI
+  GHL_PIT_TOKEN=COLE_PIT_TOKEN_AQUI
+  RECEIVER_HEALTH_URL=https://webhooks.ahoy.digital/meta-leads/health
+  EOF
+  sed -i.bak "s|COLE_LOCATION_ID_AQUI|${GHL_LOCATION_ID}|" .env
+  sed -i.bak "s|COLE_PIT_TOKEN_AQUI|${GHL_PIT_TOKEN}|" .env
+  rm -f .env.bak
+
+  # 3. Carrega na sessão (nunca ecoar o token)
+  export GHL_LOCATION_ID=$(grep '^GHL_LOCATION_ID=' .env | cut -d'=' -f2-)
+  export GHL_PIT_TOKEN=$(grep '^GHL_PIT_TOKEN=' .env | cut -d'=' -f2-)
+  export RECEIVER_HEALTH_URL=$(grep '^RECEIVER_HEALTH_URL=' .env | cut -d'=' -f2-)
+  ```
+
+  Salva `ghl_location_id` no CLAUDE.md (Passo 11) — **`GHL_PIT_TOKEN` NUNCA vai
+  pro CLAUDE.md** (é secret, fica só no `.env`, igual `META_ACCESS_TOKEN`).
+
 ### Passo 9 — Ler timezone/currency/min_daily_budget da API
 
 **Não hardcode** (fix de inconsistência CLAUDE.md):
@@ -147,12 +249,21 @@ Usa valores retornados (ex: Flávio tem `America/Recife` / `BRL` / `518` — nã
 
 ### Passo 10 — Perguntar nomenclatura
 
+**Pergunta obrigatória de degrau (S/n) — não pula direto pras opções:**
+
 ```
-Qual padrão de nomenclatura você usa?
+Você tem um padrão de nomenclatura próprio pra campanhas/conjuntos/anúncios? [S/n] [N]:
+```
+
+- `n` (default) → usa `ahoy-style` automaticamente. Salva `nomenclatura_style: ahoy-style` no CLAUDE.md e pula pro Passo 11. Mostra: `OK, vou usar o padrão ahoy-style: ahoy_YYYYMMDD_produto_objetivo_destino_opt_publico`.
+- `S` → mostra as 3 opções:
+
+```
+Qual padrão você usa?
 
 [1] ahoy-style — ahoy_YYYYMMDD_produto_objetivo_destino_opt_publico
-[2] enxuto — YYYYMMDD-produto-objetivo
-[3] custom — cola um exemplo e eu extraio o pattern
+[2] enxuto    — YYYYMMDD-produto-objetivo
+[3] custom    — cola um exemplo e eu extraio o pattern
 ```
 
 Se [3]:
@@ -161,7 +272,14 @@ Se [3]:
 - Mostra template detectado, confirma
 - Repete pra ad set e ad
 
+**Por que esse degrau:** maior parte dos usuários não tem padrão e fica trancado nas 3 opções. Default `ahoy-style` desbloqueia o fluxo sem decisão.
+
 ### Passo 11 — Salvar CLAUDE.md + criar .meta-ads-initialized
+
+Se um pixel existia (Passo 8) **ou** foi criado no Passo 8 (fluxo "Criar pixel
+agora?"), grava `pixel_id` normal. Se a conta seguiu sem pixel (usuário
+respondeu `N`), o campo fica **comentado** — sinaliza pro resto do plugin que
+públicos de tipo Website não estão disponíveis até um pixel existir.
 
 ```markdown
 ## Meta Ads Config
@@ -170,7 +288,7 @@ ad_account_name: Nome
 page_id: XXXXX
 page_name: Nome Página
 instagram_user_id: 17841XXXXX
-pixel_id: XXXXX  # ou comentado se sem pixel
+pixel_id: XXXXX
 currency: BRL
 timezone: America/Recife
 min_daily_budget: 518  # valor real da API
@@ -179,7 +297,18 @@ nomenclatura_template_campanha: "[{TIPO}][{PRODUTO}][{OPT}]"  # se custom
 nomenclatura_template_adset: "{NN} - {PUBLICO}"
 nomenclatura_template_ad: "AD {NN} - {FORMATO}"
 nomenclatura_uppercase: true
+ghl_location_id: XXXXX  # se integrou no Passo 8.5 — GHL_PIT_TOKEN NUNCA vai aqui
 ```
+
+Se seguiu sem pixel, o campo vai comentado no lugar de `pixel_id: XXXXX`:
+
+```markdown
+# pixel_id:  # nenhum pixel — rodar setup de novo, ou criar via flows/publicos/SKILL.md seção 1.1
+```
+
+Se não integrou com GHL/FluxiHub no Passo 8.5, `ghl_location_id` fica de fora
+do CLAUDE.md por completo (não comentado — só omitido; não há dependência de
+outros flows nesse campo, ao contrário do `pixel_id`).
 
 Cria flag:
 ```bash
@@ -189,6 +318,7 @@ touch .meta-ads-initialized
 ## Regras
 
 - NUNCA ecoar `$META_ACCESS_TOKEN` em output
+- NUNCA ecoar `$GHL_PIT_TOKEN` em output — igual ao token da Meta, fica só no `.env`, nunca no CLAUDE.md
 - `.gitignore` check SEMPRE antes do write do token
 - Re-rodar setup é idempotente (atualiza CLAUDE.md, não duplica)
 - Se token já existe, valida antes de perguntar novo
